@@ -4,7 +4,11 @@ on:
   schedule:
     # 每日香港時間朝早 09:00 執行 (UTC 01:00)
     - cron: '0 1 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # 俾你手動撳制測試
+
+env:
+  # 強制使用 Node.js 24 以消除 Deprecation 警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -16,7 +20,7 @@ jobs:
       - name: 設定 Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12' # 升級到 3.12 解決兼容性問題
+          python-version: '3.12'
 
       - name: 安裝工具庫
         run: |
