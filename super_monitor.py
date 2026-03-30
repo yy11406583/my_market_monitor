@@ -5,8 +5,8 @@ import time
 import pandas as pd
 
 # --- 設定區 ---
-TELEGRAM_TOKEN = "你的_API_TOKEN"
-CHAT_ID = "你的_CHAT_ID"
+TELEGRAM_TOKEN = "8228323704:AAHnYzsbkjm0QdBFb8Q7bcuSvAX6MTKSNDs"
+CHAT_ID = "8275898854"
 
 # 監控清單 (Ticker: 顯示名稱)
 WATCHLIST = {
