@@ -8,7 +8,6 @@ import pandas as pd
 TELEGRAM_TOKEN = "8228323704:AAHnYzsbkjm0QdBFb8Q7bcuSvAX6MTKSNDs"
 CHAT_ID = "8275898854"
 
-# 監控清單
 WATCHLIST = {
     "2800.HK": "盈富基金",
     "3466.HK": "恒生高息股",
@@ -22,7 +21,6 @@ WATCHLIST = {
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        # 使用 HTML 模式令文字可以變粗體
         requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=15)
     except Exception as e:
         print(f"發送失敗: {e}")
@@ -39,23 +37,32 @@ def get_kdj_low(ticker_symbol, interval="1wk"):
 def get_stock_data(ticker_symbol):
     try:
         t = yf.Ticker(ticker_symbol)
-        # 抓取現價
-        price = t.history(period="1d")['Close'].iloc[-1]
+        # 抓取最新成交價，唔用 info 嘅 price
+        hist = t.history(period="5d")
+        if hist.empty: return 0, 0
+        price = hist['Close'].iloc[-1]
         
-        # 修正股息抓取：優先找 trailingAnnualDividendRate
-        info = t.info
-        div_rate = info.get('trailingAnnualDividendRate') or info.get('dividendRate') or 0
-        
-        # 針對 yfinance 抓不到港股 info 的備案：從 history 算過去一年派息
-        if div_rate == 0:
-            div_history = t.actions
-            if not div_history.empty:
-                last_year = div_history.last('365d')
-                div_rate = last_year['Dividends'].sum()
+        # 強制計算法：抓取過去一年的實際派息紀錄
+        actions = t.actions
+        if not actions.empty and 'Dividends' in actions:
+            # 獲取過去 365 天的總派息
+            one_year_ago = pd.Timestamp.now(tz='UTC') - pd.Timedelta(days=365)
+            # 確保 index 是 datetime 格式且有時區
+            actions.index = pd.to_datetime(actions.index).tz_convert('UTC')
+            last_year_divs = actions[actions.index > one_year_ago]['Dividends'].sum()
+            dy = (last_year_divs / price * 100) if price > 0 else 0
+        else:
+            dy = 0
 
-        dy = (div_rate / price * 100) if price > 0 else 0
+        # 特殊處理：如果計算結果太離譜（例如匯豐得 0.6），嘗試從 info 補救
+        if dy < 1.0:
+            info = t.info
+            div_rate = info.get('trailingAnnualDividendRate') or info.get('dividendRate') or 0
+            dy = (div_rate / price * 100) if price > 0 else dy
+
         return dy, price
-    except:
+    except Exception as e:
+        print(f"Error fetching {ticker_symbol}: {e}")
         return 0, 0
 
 def check_all():
@@ -64,7 +71,7 @@ def check_all():
     
     # 1. 檢查 VIX
     try:
-        vix = yf.Ticker("^^VIX").history(period="1d")['Close'].iloc[-1]
+        vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
         if vix >= 45: reports.append("🔴 <b>VIX 恐慌警告: {:.2f}</b>".format(vix))
     except: pass
 
@@ -73,28 +80,22 @@ def check_all():
         dy, price = get_stock_data(symbol)
         wk_low, wk_val = get_kdj_low(symbol, "1wk")
         mo_low, mo_val = get_kdj_low(symbol, "1mo")
-        
         kdj_str = ""
         if wk_low or mo_low:
             kdj_str = " 🔥 <b>入貨訊號:</b>"
             if wk_low: kdj_str += " 週K({})".format(round(wk_val,1))
             if mo_low: kdj_str += " 月K({})".format(round(mo_val,1))
-        
         reports.append("📈 {}: <b>{:.2f}</b>{}".format(WATCHLIST[symbol], price, kdj_str))
 
     reports.append("\n<b>【港股及高息股】</b>")
     for symbol in ["2800.HK", "3466.HK", "0941.HK", "0005.HK", "0939.HK"]:
         dy, price = get_stock_data(symbol)
         name = WATCHLIST[symbol]
-        
-        # 判斷股息率是否吸引 (例如 > 6%)
         emoji = "🟢" if dy >= 6 else "💰"
-        
         kdj_str = ""
         if symbol in ["2800.HK", "3466.HK"]:
             wk_low, wk_val = get_kdj_low(symbol, "1wk")
             if wk_low: kdj_str = " 🔥 <b>低位: 週K({})</b>".format(round(wk_val,1))
-
         reports.append("{} {}: <b>{:.2f}</b> (息: <b>{:.2f}%</b>){}".format(emoji, name, price, dy, kdj_str))
 
     send_msg("\n".join(reports))
