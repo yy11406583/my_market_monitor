@@ -3,10 +3,11 @@ import pandas_ta as ta
 import requests
 import time
 import pandas as pd
+import os
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
-# --- 設定區 (只需填 Telegram) ---
+# --- 1. 配置區 (從 GitHub Secrets 讀取，安全第一) ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -19,23 +20,28 @@ WATCHLIST = {
     "VOO": "VOO",
     "QQQ": "QQQ"
 }
-# 海上意外關鍵字
+
+# 你指定的更新版關鍵字
 MARITIME_KEYWORDS = ["水警", "海上意外", "船隻爆炸", "海上吸毒", "海上偷竊", "偷渡", "海上工業意外", "政府船塢", "漂浮", "撞船", "青馬大橋", "昂船洲", "噴射船", "沉沒", "跳海", "跳橋", "溺斃", "墮海"]
-# 財經重要關鍵字 (用於 08-24 監控)
 FINANCE_KEYWORDS = ["派息", "除淨", "業績", "回購", "盈喜", "盈警", "股息", "KDJ", "超賣", "暴跌", "飆升"]
 
+# --- 2. 功能函數 ---
+
 def send_msg(text):
+    if not text: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=15)
     except: pass
 
 def get_kdj_low(ticker_symbol, interval="1wk"):
-    df = yf.Ticker(ticker_symbol).history(period="1y", interval=interval)
+    period = "1y" if interval == "1wk" else "5y"
+    df = yf.Ticker(ticker_symbol).history(period=period, interval=interval)
     if df.empty or len(df) < 20: return False, 0
     kdj = ta.kdj(df['High'], df['Low'], df['Close'])
     k_column = [col for col in kdj.columns if col.startswith('K_') or 'KDJ_K' in col]
-    return kdj[k_column[0]].iloc[-1] < 20, kdj[k_column[0]].iloc[-1]
+    current_k = kdj[k_column[0]].iloc[-1]
+    return current_k < 20, current_k
 
 def get_stock_data(ticker_symbol):
     try:
@@ -51,49 +57,58 @@ def get_stock_data(ticker_symbol):
     except: return 0, 0
 
 def fetch_filtered_news(keywords):
-    """純邏輯過濾：標題有關鍵字才回傳"""
-    url = f"https://news.google.com/rss/search?q=香港+新聞&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
-    results = []
+    """從 Google News 抓取包含關鍵字的標題"""
+    url = "https://news.google.com/rss/search?q=香港+新聞&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
+    found = []
     try:
         r = requests.get(url, timeout=10)
         soup = BeautifulSoup(r.content, 'xml')
-        for item in soup.find_all('item', limit=20):
+        for item in soup.find_all('item', limit=50): # 掃描前 50 條新聞確保覆蓋率
             title = item.title.text
             if any(k in title for k in keywords):
-                results.append(f"• {title}")
+                found.append(f"• {title}")
     except: pass
-    return "\n".join(results)
+    return "\n".join(found[:5]) # 最多回傳 5 條最重要的
+
+# --- 3. 主邏輯 ---
 
 def run_main():
     hkt_now = datetime.utcnow() + timedelta(hours=8)
     now_hour = hkt_now.hour
     
-    # 執行過濾
-    maritime_news = fetch_filtered_news(MARITIME_KEYWORDS)
-    finance_news = fetch_filtered_news(FINANCE_KEYWORDS)
+    maritime_hits = fetch_filtered_news(MARITIME_KEYWORDS)
+    finance_hits = fetch_filtered_news(FINANCE_KEYWORDS)
 
-    # 1. 早上 08:00 全面報告
+    # A. 08:00 綜合匯報 (報價 + 關鍵字摘要)
     if now_hour == 8:
         reports = [f"<b>📊 市場監控報告 ({hkt_now.strftime('%Y-%m-%d')})</b>\n"]
-        # VIX 略過代碼... (保留你原本的 VIX 邏輯)
-        reports.append("<b>【美股/港股報價】</b>")
+        # VIX 檢查 (保留你原本邏輯)
+        try:
+            vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+            if vix >= 45: reports.append(f"🔴 <b>VIX 恐慌: {vix:.2f}</b>")
+        except: pass
+
+        reports.append("<b>【核心持倉報價】</b>")
         for s, name in WATCHLIST.items():
             dy, price = get_stock_data(s)
-            reports.append(f"• {name}: <b>{price:.2f}</b> (息: {dy:.1f}%)")
+            wk_low, wk_v = get_kdj_low(s, "1wk")
+            kdj_str = f" 🔥 <b>低位: 週K({wk_v:.1f})</b>" if wk_low else ""
+            reports.append(f"• {name}: <b>{price:.2f}</b> (息: {dy:.1f}%){kdj_str}")
         
-        # 水域總結
-        m_status = f"\n⚠️ <b>水域警報：</b>\n{maritime_news}" if maritime_news else "\n⚓️ 香港水域安全"
+        # 早上一定發送水域狀態
+        m_status = f"\n⚠️ <b>發現水域相關新聞：</b>\n{maritime_hits}" if maritime_hits else "\n⚓️ 香港水域安全"
         reports.append(m_status)
         send_msg("\n".join(reports))
         return
 
-    # 2. 海上突發 (24小時，只要有新聞就發)
-    if maritime_news:
-        send_msg(f"🚨 <b>突發海上訊息 ({now_hour}:00)</b>\n\n{maritime_news}")
+    # B. 突發監控 (每 2 小時運行時檢查)
+    # 海上：24 小時有事即報
+    if maritime_hits:
+        send_msg(f"🚨 <b>突發海上訊息 ({now_hour}:00)</b>\n\n{maritime_hits}")
 
-    # 3. 財經重要訊息 (08-24 運行)
-    if 8 < now_hour < 24 and finance_news:
-        send_msg(f"🔔 <b>重要財經訊息 ({now_hour}:00)</b>\n\n{finance_news}")
+    # 財經：08-24 期間有重要關鍵字才報
+    if 8 < now_hour < 24 and finance_hits:
+        send_msg(f"🔔 <b>監測到財經動態 ({now_hour}:00)</b>\n\n{finance_hits}")
 
 if __name__ == "__main__":
     run_main()
