@@ -8,7 +8,7 @@ import pandas as pd
 TELEGRAM_TOKEN = "8228323704:AAHnYzsbkjm0QdBFb8Q7bcuSvAX6MTKSNDs"
 CHAT_ID = "8275898854"
 
-# 監控清單 (Ticker: 顯示名稱)
+# 監控清單
 WATCHLIST = {
     "2800.HK": "盈富基金",
     "3466.HK": "恒生高息股",
@@ -22,7 +22,8 @@ WATCHLIST = {
 def send_msg(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": text}, timeout=15)
+        # 使用 HTML 模式令文字可以變粗體
+        requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}, timeout=15)
     except Exception as e:
         print(f"發送失敗: {e}")
 
@@ -31,66 +32,73 @@ def get_kdj_low(ticker_symbol, interval="1wk"):
     df = yf.Ticker(ticker_symbol).history(period=period, interval=interval)
     if df.empty or len(df) < 20: return False, 0
     kdj = ta.kdj(df['High'], df['Low'], df['Close'])
-    k_column = [col for col in kdj.columns if col.startswith('K_') or 'KDJ_K' in col or col == 'KDJ_9_3']
+    k_column = [col for col in kdj.columns if col.startswith('K_') or 'KDJ_K' in col]
     current_k = kdj[k_column[0]].iloc[-1] if k_column else kdj.iloc[-1, 0]
     return current_k < 20, current_k
 
 def get_stock_data(ticker_symbol):
     try:
         t = yf.Ticker(ticker_symbol)
-        info = t.info
-        # 優先抓取現價
-        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
+        # 抓取現價
+        price = t.history(period="1d")['Close'].iloc[-1]
         
-        # 準確計算股息率：年度股息 / 現價
-        div_rate = info.get('trailingAnnualDividendRate') or 0
+        # 修正股息抓取：優先找 trailingAnnualDividendRate
+        info = t.info
+        div_rate = info.get('trailingAnnualDividendRate') or info.get('dividendRate') or 0
+        
+        # 針對 yfinance 抓不到港股 info 的備案：從 history 算過去一年派息
         if div_rate == 0:
-            dy = (info.get('trailingAnnualDividendYield') or 0) * 100
-        else:
-            dy = (div_rate / price) * 100 if price > 0 else 0
-            
+            div_history = t.actions
+            if not div_history.empty:
+                last_year = div_history.last('365d')
+                div_rate = last_year['Dividends'].sum()
+
+        dy = (div_rate / price * 100) if price > 0 else 0
         return dy, price
     except:
         return 0, 0
 
 def check_all():
     print(f"--- 執行全面掃描 {time.ctime()} ---")
-    reports = []
-
+    reports = ["<b>📊 市場監控報告 ({})</b>\n".format(time.strftime('%Y-%m-%d'))]
+    
     # 1. 檢查 VIX
     try:
-        vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        if vix >= 45: reports.append(f"⚠️ VIX 恐慌警告: {vix:.2f}")
+        vix = yf.Ticker("^^VIX").history(period="1d")['Close'].iloc[-1]
+        if vix >= 45: reports.append("🔴 <b>VIX 恐慌警告: {:.2f}</b>".format(vix))
     except: pass
 
-    # 2. 遍歷清單檢查 KDJ 同 股息
-    for symbol, name in WATCHLIST.items():
-        try:
-            dy, price = get_stock_data(symbol)
-            
-            # 只有美股或指數才檢查 KDJ
-            kdj_msg = ""
-            if symbol in ["2800.HK", "3466.HK", "VOO", "QQQ"]:
-                wk_low, wk_val = get_kdj_low(symbol, "1wk")
-                mo_low, mo_val = get_kdj_low(symbol, "1mo")
-                if wk_low or mo_low:
-                    kdj_msg = " | KDJ探底: "
-                    if wk_low: kdj_msg += f"週K({wk_val:.1f}) "
-                    if mo_low: kdj_msg += f"月K({mo_val:.1f}) "
-            
-            # 格式化輸出
-            if symbol in ["VOO", "QQQ"]:
-                reports.append(f"📈 {name}: {price:.2f}{kdj_msg}")
-            else:
-                reports.append(f"💰 {name}: {price:.2f} (息: {dy:.2f}%){kdj_msg}")
+    reports.append("<b>【美股指數】</b>")
+    for symbol in ["VOO", "QQQ"]:
+        dy, price = get_stock_data(symbol)
+        wk_low, wk_val = get_kdj_low(symbol, "1wk")
+        mo_low, mo_val = get_kdj_low(symbol, "1mo")
+        
+        kdj_str = ""
+        if wk_low or mo_low:
+            kdj_str = " 🔥 <b>入貨訊號:</b>"
+            if wk_low: kdj_str += " 週K({})".format(round(wk_val,1))
+            if mo_low: kdj_str += " 月K({})".format(round(mo_val,1))
+        
+        reports.append("📈 {}: <b>{:.2f}</b>{}".format(WATCHLIST[symbol], price, kdj_str))
 
-        except Exception as e:
-            print(f"處理 {name} 時出錯: {e}")
+    reports.append("\n<b>【港股及高息股】</b>")
+    for symbol in ["2800.HK", "3466.HK", "0941.HK", "0005.HK", "0939.HK"]:
+        dy, price = get_stock_data(symbol)
+        name = WATCHLIST[symbol]
+        
+        # 判斷股息率是否吸引 (例如 > 6%)
+        emoji = "🟢" if dy >= 6 else "💰"
+        
+        kdj_str = ""
+        if symbol in ["2800.HK", "3466.HK"]:
+            wk_low, wk_val = get_kdj_low(symbol, "1wk")
+            if wk_low: kdj_str = " 🔥 <b>低位: 週K({})</b>".format(round(wk_val,1))
 
-    if reports:
-        final_msg = "\n".join(reports)
-        send_msg(f"📊 市場監控報告 ({time.strftime('%Y-%m-%d')})\n\n{final_msg}")
-        print("✅ 報告已發送")
+        reports.append("{} {}: <b>{:.2f}</b> (息: <b>{:.2f}%</b>){}".format(emoji, name, price, dy, kdj_str))
+
+    send_msg("\n".join(reports))
+    print("✅ 報告已發送")
 
 if __name__ == "__main__":
     check_all()
