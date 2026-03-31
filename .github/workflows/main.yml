@@ -2,7 +2,11 @@ name: 2-Hour Smart Monitor
 
 on:
   schedule:
+    # 香港時間 08, 10, 12, 14, 16, 18, 20, 22, 00, 02, 04, 06
     - cron: '0 */2 * * *'
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -20,7 +24,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # 這裡只裝最基礎、最穩定的庫
           pip install requests beautifulsoup4 yfinance pandas lxml
 
       - name: Execute Monitor Script
