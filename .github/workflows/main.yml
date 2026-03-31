@@ -2,7 +2,9 @@ name: 2-Hour Smart Monitor
 
 on:
   schedule:
-    - cron: '0 */2 * * *'
+    # 修改為每兩小時的 55 分運行，避開高峰排隊
+    # 香港時間: 07:55, 09:55, 11:55, 13:55, 15:55, 17:55, 19:55, 21:55, 23:55, 01:55, 03:55, 05:55
+    - cron: '55 */2 * * *'
   push:
     branches:
       - main
@@ -34,6 +36,16 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python super_monitor.py
+
+      - name: Commit and push news history
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          touch sent_news.txt
+          git add sent_news.txt
+          # 只有在有新新聞紀錄時才提交，避免無意義的 commit
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update news history [skip ci]" && git push origin main)
         run: python super_monitor.py
 
       - name: Commit and push news history
