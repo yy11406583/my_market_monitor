@@ -2,12 +2,12 @@ name: Market Monitor 2026
 
 on:
   schedule:
-    # 每日香港時間朝早 09:00 執行 (UTC 01:00)
-    - cron: '0 1 * * *'
-  workflow_dispatch: # 俾你手動撳制測試
+    # 每日香港時間 08:01 執行 (UTC 00:01)
+    # 避開整點高峰期，減少排隊延遲
+    - cron: '1 0 * * *'
+  workflow_dispatch: # 俾你隨時手動測試
 
 env:
-  # 強制使用 Node.js 24 以消除 Deprecation 警告
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
