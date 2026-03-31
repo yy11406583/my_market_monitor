@@ -1,23 +1,31 @@
-name: 2-Hour Simple Monitor
+name: 2-Hour Smart Monitor
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # 每 2 小時 (UTC)
-  workflow_dispatch:
+    # 這裡設定每 2 小時運行一次 (UTC 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
+    # 對應香港時間 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00, 00:00, 02:00, 04:00, 06:00
+    - cron: '0 */2 * * *'
+  workflow_dispatch: # 容許你在 GitHub Actions 頁面手動隨時點擊運行測試
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 yfinance pandas pandas-ta lxml
-      - name: Run
+        run: |
+          pip install requests beautifulsoup4 yfinance pandas pandas-ta lxml
+
+      - name: Execute Monitor Script
         env:
+          # 這裡必須與你在 GitHub Settings -> Secrets 中設定的名稱完全一致
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python super_monitor.py
