@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 # --- 設定區 (只需填 Telegram) ---
-TELEGRAM_TOKEN = "8228323704:AAHnYzsbkjm0QdBFb8Q7bcuSvAX6MTKSNDs"
-CHAT_ID = "8275898854"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 WATCHLIST = {
     "2800.HK": "盈富基金",
