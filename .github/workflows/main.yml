@@ -2,7 +2,7 @@ name: 2-Hour Smart Monitor
 
 on:
   schedule:
-    # 香港時間: 07:55, 09:55, 11:55, 13:55, 15:55, 17:55, 19:55, 21:55, 23:55...
+    # 每兩小時的 55 分運行
     - cron: '55 */2 * * *'
   push:
     branches:
@@ -34,6 +34,16 @@ jobs:
       - name: Execute Monitor Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python super_monitor.py
+
+      - name: Commit and push news history
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          touch sent_news.txt
+          git add sent_news.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update news history [skip ci]" && git push origin main)
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python super_monitor.py
 
