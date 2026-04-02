@@ -2,10 +2,10 @@ import yfinance as yf
 import requests
 import pandas as pd
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 import urllib.parse
-import email.utils # 用於解析 RSS 時間格式
+import email.utils
 
 # --- 1. 配置區 ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -19,7 +19,7 @@ WATCHLIST = {
 
 MARITIME_KEYWORDS = [
     "水警", "海關", "走私", "偷運", "快艇", "小艇分區", "截獲", "非法入境",
-    "大嶼山", "南丫島", "長洲", "后海灣", "吐露港", "昂船洲", "青馬大橋", 
+    "大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青馬大橋", 
     "海上意外", "船隻", "撞船", "沉沒", "墮海", "溺斃", "漂浮", "救起",
     "政府船塢", "噴射船", "私煙", "凍肉", "警察", "警員", "船上"
 ]
@@ -75,7 +75,9 @@ def fetch_filtered_news(keywords, history, custom_query=None):
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
     
     found, new_sent_titles = [], []
-    now = datetime.now(timedelta(hours=8)) # 香港時間
+    # 修正：正確定義香港時區
+    hk_tz = timezone(timedelta(hours=8))
+    now = datetime.now(hk_tz)
     
     try:
         r = requests.get(url, timeout=15)
@@ -84,9 +86,10 @@ def fetch_filtered_news(keywords, history, custom_query=None):
             title = item.title.text
             pub_date_str = item.pubDate.text
             
-            # --- 核心修復：時間過濾邏輯 ---
+            # 解析 RSS 時間並確保它有時區資訊進行比較
             pub_date = email.utils.parsedate_to_datetime(pub_date_str)
-            # 只有在過去 24 小時內的新聞才准許通過
+            
+            # 如果新聞在 24 小時前發布，則跳過
             if (now - pub_date).total_seconds() > 86400:
                 continue 
             
@@ -103,8 +106,10 @@ def send_tg(text):
     except: pass
 
 def run_main():
-    hkt_now = datetime.utcnow() + timedelta(hours=8)
+    hk_tz = timezone(timedelta(hours=8))
+    hkt_now = datetime.now(hk_tz)
     now_hour = hkt_now.hour
+    
     history = set()
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
