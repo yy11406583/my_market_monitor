@@ -1,11 +1,11 @@
-name: 2-Hour Smart Monitor V2
+name: 2-Hour Smart Monitor V3
 
 on:
   schedule:
     - cron: '55 */2 * * *'
-  push:
-    branches:
-      - main
+  # 這是接收外部 (Cron-job.org) 信號的關鍵設定
+  repository_dispatch:
+    types: [manual_trigger]
   workflow_dispatch:
 
 permissions:
