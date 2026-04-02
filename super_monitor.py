@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 import urllib.parse
+import email.utils # 用於解析 RSS 時間格式
 
 # --- 1. 配置區 ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -16,7 +17,6 @@ WATCHLIST = {
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
-# 擴充水警/海上行動高頻關鍵字
 MARITIME_KEYWORDS = [
     "水警", "海關", "走私", "偷運", "快艇", "小艇分區", "截獲", "非法入境",
     "大嶼山", "南丫島", "長洲", "后海灣", "吐露港", "昂船洲", "青馬大橋", 
@@ -75,12 +75,21 @@ def fetch_filtered_news(keywords, history, custom_query=None):
     url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
     
     found, new_sent_titles = [], []
+    now = datetime.now(timedelta(hours=8)) # 香港時間
+    
     try:
         r = requests.get(url, timeout=15)
         soup = BeautifulSoup(r.content, 'xml')
-        # 鎖定 100 條極限
         for item in soup.find_all('item', limit=100):
             title = item.title.text
+            pub_date_str = item.pubDate.text
+            
+            # --- 核心修復：時間過濾邏輯 ---
+            pub_date = email.utils.parsedate_to_datetime(pub_date_str)
+            # 只有在過去 24 小時內的新聞才准許通過
+            if (now - pub_date).total_seconds() > 86400:
+                continue 
+            
             if any(k in title for k in keywords) and title not in history:
                 found.append(f"• {title}")
                 new_sent_titles.append(title)
@@ -101,29 +110,24 @@ def run_main():
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             history = {line.strip() for line in f}
     
-    # --- 關鍵優化：強力精準搜尋字串 ---
-    # 針對水警與突發海上行動的專門 Query
     maritime_query = "水警 OR 走私 OR 墮海 OR 海關 OR (快艇 截獲) OR (小艇分區 拘捕)"
     m_list, m_new = fetch_filtered_news(MARITIME_KEYWORDS, history, custom_query=maritime_query)
     
-    # 針對財經與 Watchlist 的專門 Query
     finance_query = "港股 派息 業績 盈喜 盈警 VOO QQQ"
     f_list, f_new = fetch_filtered_news(FINANCE_KEYWORDS, history, custom_query=finance_query)
     
     vol = get_volatility_indices()
 
-    # 1. 即時突發報警 (VIX/VHSI)
+    # 1. 突發報警
     emergency = []
     if vol["VIX"] >= 45: emergency.append(f"🔴🔴 <b>VIX 極端恐慌: {vol['VIX']:.2f}</b>")
     if vol["VHSI"] >= 35: emergency.append(f"⚠️ <b>VHSI 恐慌提醒: {vol['VHSI']:.2f}</b>")
     if emergency: send_tg("🚨 <b>【市場波動警告】</b>\n\n" + "\n".join(emergency))
 
-    # 2. 輸出報告邏輯
+    # 2. 報告邏輯
     if now_hour == 8:
-        # 08:00 顯示大報告
         reports = [f"<b>📊 市場監控報告 ({hkt_now.strftime('%Y-%m-%d %H:%M')})</b>"]
-        reports.append(f"• VIX: {vol['VIX']:.2f}" + (" (高)" if vol['VIX']>30 else ""))
-        reports.append(f"• VHSI: {vol['VHSI']:.2f}" + (" (高)" if vol['VHSI']>30 else "") + "\n")
+        reports.append(f"• VIX: {vol['VIX']:.2f} | VHSI: {vol['VHSI']:.2f}\n")
         reports.append("<b>【核心持倉報價】</b>")
         for s, name in WATCHLIST.items():
             dy, price = get_stock_data(s)
@@ -134,16 +138,13 @@ def run_main():
             if mo_low: msg += f" 💎 <b>月K({mo_v:.1f})</b>"
             reports.append(f"• {name}: <b>{price:.2f}</b> (息: {dy:.1f}%){msg}")
         
-        # 08:00 抓取過去 24 小時所有水警相關新聞 (不分是否已發過)
         m_today, _ = fetch_filtered_news(MARITIME_KEYWORDS, set(), custom_query=maritime_query)
-        reports.append(f"\n⚠️ <b>今日海上/突發焦點：</b>\n" + "\n".join(m_today[:10]) if m_today else "\n⚓️ 暫無突發")
+        reports.append(f"\n⚠️ <b>24小時內海上/突發焦點：</b>\n" + "\n".join(m_today[:10]) if m_today else "\n⚓️ 暫無突發")
         send_tg("\n".join(reports))
     else:
-        # 非 8 點時段，只發送「新發現」的新聞
         if m_list: send_tg(f"🚨 <b>突發訊息 ({now_hour}:00)</b>\n\n" + "\n".join(m_list[:5]))
         if 8 < now_hour < 24 and f_list: send_tg(f"🔔 <b>財經動態 ({now_hour}:00)</b>\n\n" + "\n".join(f_list[:5]))
     
-    # 3. 儲存紀錄
     final_new = list(set(m_new + f_new))
     if final_new:
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
