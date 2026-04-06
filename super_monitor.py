@@ -22,14 +22,14 @@ MARITIME_KEYWORDS = [
     "水警", "走私", "截獲", "快艇", "內河船", "小艇分區", "非法入境",
     "大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青馬大橋", 
     "海上意外", "船隻", "撞船", "沉沒", "墮海", "溺斃", "漂浮", "救起",
-    "警方", "警區", "警崗", "警署", "吞槍", "自轟", "警察", "警員", "反爆竊"
+    "警方", "警區", "警署", "警察", "警員", "反爆竊", "失蹤", "尋人"
 ]
 
 FINANCE_KEYWORDS = ["派息", "業績", "回購", "盈喜", "盈警", "股息", "減息", "加息", "聯儲局", "美股"]
 
-EXCLUDE_KEYWORDS = ["南京", "東京", "斯里蘭卡", "泰國", "緬甸", "柬埔寨", "日本", "北京", "上海", "深圳", "馬來西亞", "台灣", "倫敦", "苗栗", "太原", "特拉維夫", "布吉", "德國", "美超微", "不認罪", "開庭", "紐約"]
-HK_DISTRICTS = ["香港", "港聞", "新界", "九龍", "港島", "屯門", "元朗", "機場", "旺角", "油麻地", "深水埗", "西貢", "觀塘", "東涌", "大嶼山", "長沙灣", "灣仔", "中環", "半山", "南區"]
-INTL_SOURCES = ["RFI", "共同網", "法廣", "路透", "美聯", "德新社", "中央社", "自由時報", "聯合報"]
+EXCLUDE_KEYWORDS = ["南京", "東京", "斯里蘭卡", "泰國", "緬甸", "柬埔寨", "日本", "北京", "上海", "深圳", "馬來西亞", "台灣", "倫敦", "苗栗", "太原", "布吉", "德國", "多倫多", "加州", "美超微", "交通部長"]
+HK_DISTRICTS = ["香港", "港聞", "新界", "九龍", "港島", "屯門", "元朗", "機場", "旺角", "油麻地", "深水埗", "西貢", "觀塘", "東涌", "大嶼山", "長沙灣", "灣仔", "中環", "半山", "南區", "大欖涌"]
+INTL_SOURCES = ["RFI", "共同網", "法廣", "路透", "美聯", "德新社", "中央社", "自由時報", "聯合報", "多倫多", "發燒車訊"]
 
 # --- 2. 核心功能 (KDJ & 市場數據) ---
 
@@ -55,7 +55,7 @@ def get_volatility_indices():
     results = {"VIX": 0.0, "VHSI": 0.0}
     try:
         results["VIX"] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        vhsi_df = yf.Ticker("^VHSI").history(period="30d")
+        vhsi_df = yf.Ticker("^VHSI").history(period="60d") # 擴大搜尋範圍確保非0
         if not vhsi_df.empty:
             valid_closes = vhsi_df['Close'][vhsi_df['Close'] > 0]
             if not valid_closes.empty: results["VHSI"] = valid_closes.iloc[-1]
@@ -79,28 +79,26 @@ def get_stock_data(ticker_symbol):
     except: return 0.0, 0.0
 
 def clean_title(title):
-    title = re.split(r' - | \| | – | - 香港經濟日報', title)[0]
+    # 移除 RSS 尾綴、地點後綴、括號內容
+    title = re.split(r' - | \| | – |（附圖）|- 港聞|- 香港', title)[0]
     return title.strip()
 
 def is_duplicate_story(new_title, history_list):
-    t1 = clean_title(new_title).strip()
-    numbers = set(re.findall(r'\d+\.?\d*[萬|億|人|克|公斤|斤|條|架]?', t1))
-    districts = [d for d in HK_DISTRICTS if d in t1]
+    t1 = clean_title(new_title)
+    # 提取關鍵詞：數字(79歲) + 地名(屯門)
+    keywords = re.findall(r'\d+|屯門|失蹤|行山|水警|走私', t1)
+    
     for old_raw in history_list:
-        t2 = clean_title(old_raw).strip()
+        t2 = clean_title(old_raw)
         if t1 == t2: return True
-        old_numbers = set(re.findall(r'\d+\.?\d*[萬|億|人|克|公斤|斤|條|架]?', t2))
-        if numbers and numbers == old_numbers:
-            old_districts = [d for d in HK_DISTRICTS if d in t2]
-            if districts and old_districts and districts != old_districts: continue 
-            verbs = ["拘", "捕", "獲", "搜", "偷", "竊", "破", "爆竊"]
-            if any(v in t1 and v in t2 for v in verbs): return True
+        # 如果標題包含相同的核心關鍵詞組合（例如都有 79、屯門、失蹤）
+        if len(keywords) >= 3 and all(k in t2 for k in keywords):
+            return True
     return False
 
 def fetch_filtered_news(keywords, history, custom_query=None):
     base_query = custom_query if custom_query else "香港 新聞"
-    encoded_query = urllib.parse.quote(base_query)
-    url = f"https://news.google.com/rss/search?q={encoded_query}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
+    url = f"https://news.google.com/rss/search?q={urllib.parse.quote(base_query)}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
     found, new_sent_titles = [], []
     now_utc = datetime.now(timezone.utc)
     try:
@@ -112,14 +110,18 @@ def fetch_filtered_news(keywords, history, custom_query=None):
             pub_date_utc = email.utils.parsedate_to_datetime(item.pubDate.text)
             if pub_date_utc.tzinfo is None: pub_date_utc = pub_date_utc.replace(tzinfo=timezone.utc)
             if (now_utc - pub_date_utc).total_seconds() > 86400: continue 
+            
             if any(ex in title for ex in EXCLUDE_KEYWORDS): continue
             has_hk_place = any(loc in title for loc in HK_DISTRICTS)
             if any(intl in source for intl in INTL_SOURCES) and not has_hk_place: continue
+            
             if any(k in title for k in keywords):
                 if title not in history and not is_duplicate_story(title, list(history) + new_sent_titles):
                     cleaned = clean_title(title)
-                    emoji = "📦" if "走私" in cleaned or "內河船" in cleaned else "🚨"
+                    emoji = "🚨"
+                    if any(k in cleaned for k in ["走私", "內河船"]): emoji = "📦"
                     if any(k in cleaned for k in ["水警", "墮海"]): emoji = "⚓️"
+                    if "失蹤" in cleaned: emoji = "🔍"
                     found.append(f"{emoji} {cleaned}")
                     new_sent_titles.append(title)
             if len(found) >= 8: break
@@ -140,8 +142,8 @@ def run_main():
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             history = [line.strip() for line in f]
-    
-    m_list, m_new = fetch_filtered_news(MARITIME_KEYWORDS, history, custom_query="水警 OR 走私 OR 墮海 OR 警方 OR 內河船 OR 反爆竊")
+
+    m_list, m_new = fetch_filtered_news(MARITIME_KEYWORDS, history, custom_query="水警 OR 走私 OR 墮海 OR 警方 OR 內河船 OR 屯門失蹤")
 
     if now_hour == 8 and now_min < 30:
         vol = get_volatility_indices()
@@ -157,10 +159,10 @@ def run_main():
             if mo_low: k_msg += f" 💎 <b>月K({mo_v:.1f})</b>"
             reports.append(f"• {name}: <b>{price:.2f}</b> (息:{dy:.1f}%){k_msg}")
         
-        f_today, f_new = fetch_filtered_news(FINANCE_KEYWORDS, set(), custom_query="港股 派息 業績 盈喜 VOO QQQ 聯儲局")
+        f_today, f_new = fetch_filtered_news(FINANCE_KEYWORDS, set(), custom_query="港股 派息 業績 盈喜 VOO QQQ")
         if f_today: reports.append(f"\n💰 <b>財經焦點：</b>\n" + "\n".join(f_today))
         m_today, _ = fetch_filtered_news(MARITIME_KEYWORDS, set())
-        reports.append(f"\n⚠️ <b>24H 突發焦點：</b>\n" + "\n\n".join(m_today[:8]) if m_today else "\n⚓️ 暫無突發")
+        reports.append(f"\n⚠️ <b>24H 突發焦點：</b>\n" + "\n\n".join(m_today[:5]) if m_today else "\n⚓️ 暫無突發")
         send_tg("\n".join(reports))
         m_new = list(set(m_new + f_new))
     else:
