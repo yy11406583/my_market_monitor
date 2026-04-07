@@ -18,18 +18,24 @@ WATCHLIST = {
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
+# 突發關鍵字
 MARITIME_KEYWORDS = [
-    "水警", "走私", "截獲", "快艇", "內河船", "小艇分區", "非法入境",
-    "大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青馬大橋", 
-    "海上意外", "船隻", "撞船", "沉沒", "墮海", "溺斃", "漂浮", "救起",
-    "警方", "警區", "警署", "警察", "警員", "反爆竊", "失蹤", "尋人"
+    "水警", "走私", "截獲", "快艇", "內河船", "非法入境", "墮海", "船隻", 
+    "警方", "警區", "警署", "警察", "警員", "反爆竊", "失蹤", "尋人", "淋紅油", "撞車"
 ]
 
 FINANCE_KEYWORDS = ["派息", "業績", "回購", "盈喜", "盈警", "股息", "減息", "加息", "聯儲局", "美股"]
 
-EXCLUDE_KEYWORDS = ["南京", "東京", "斯里蘭卡", "泰國", "緬甸", "柬埔寨", "日本", "北京", "上海", "深圳", "馬來西亞", "台灣", "倫敦", "苗栗", "太原", "布吉", "德國", "多倫多", "加州", "美超微", "交通部長"]
-HK_DISTRICTS = ["香港", "港聞", "新界", "九龍", "港島", "屯門", "元朗", "機場", "旺角", "油麻地", "深水埗", "西貢", "觀塘", "東涌", "大嶼山", "長沙灣", "灣仔", "中環", "半山", "南區", "大欖涌"]
-INTL_SOURCES = ["RFI", "共同網", "法廣", "路透", "美聯", "德新社", "中央社", "自由時報", "聯合報", "多倫多", "發燒車訊"]
+# 徹底封殺：加入更多台灣、海外地標及媒體
+EXCLUDE_KEYWORDS = [
+    "高雄", "台中", "屏東", "新莊", "龜山", "蘇花", "加州", "澳洲", "波士頓", "多倫多", "韓國", "雲南", 
+    "沙加緬度", "密大", "金門", "楠梓", "交通部長", "郭艾倫", "俄黑客", "車道騙局", "隨身攝錄", "海巡", "螺絲釘"
+]
+HK_DISTRICTS = [
+    "香港", "港聞", "新界", "九龍", "港島", "屯門", "元朗", "機場", "旺角", "油麻地", "深水埗", 
+    "西貢", "觀塘", "東涌", "大嶼山", "長沙灣", "灣仔", "中環", "半山", "南區", "沙田", "大角咀", "麥理浩徑"
+]
+INTL_SOURCES = ["自由時報", "聯合報", "中時", "ETtoday", "三立", "TVBS", "韓星網", "發燒車訊", "細說燊語", "RFI", "共同網"]
 
 # --- 2. 核心功能 (KDJ & 市場數據) ---
 
@@ -55,7 +61,7 @@ def get_volatility_indices():
     results = {"VIX": 0.0, "VHSI": 0.0}
     try:
         results["VIX"] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        vhsi_df = yf.Ticker("^VHSI").history(period="60d") # 擴大搜尋範圍確保非0
+        vhsi_df = yf.Ticker("^VHSI").history(period="60d")
         if not vhsi_df.empty:
             valid_closes = vhsi_df['Close'][vhsi_df['Close'] > 0]
             if not valid_closes.empty: results["VHSI"] = valid_closes.iloc[-1]
@@ -79,20 +85,20 @@ def get_stock_data(ticker_symbol):
     except: return 0.0, 0.0
 
 def clean_title(title):
-    # 移除 RSS 尾綴、地點後綴、括號內容
-    title = re.split(r' - | \| | – |（附圖）|- 港聞|- 香港', title)[0]
+    title = re.sub(r'\(附圖\)|- 港聞|- 香港|- 時事|\| 生活', '', title)
+    title = re.split(r' - | \| | – ', title)[0]
     return title.strip()
 
 def is_duplicate_story(new_title, history_list):
     t1 = clean_title(new_title)
-    # 提取關鍵詞：數字(79歲) + 地名(屯門)
-    keywords = re.findall(r'\d+|屯門|失蹤|行山|水警|走私', t1)
-    
+    # 提取核心特徵：數字 + 地名 (如 70歲, 沙田, 失蹤)
+    features = set(re.findall(r'\d+|沙田|失蹤|元朗|警方|走私|投資騙案', t1))
     for old_raw in history_list:
         t2 = clean_title(old_raw)
         if t1 == t2: return True
-        # 如果標題包含相同的核心關鍵詞組合（例如都有 79、屯門、失蹤）
-        if len(keywords) >= 3 and all(k in t2 for k in keywords):
+        # 如果兩個標題嘅核心特徵重疊超過 80%，視為重覆
+        old_features = set(re.findall(r'\d+|沙田|失蹤|元朗|警方|走私|投資騙案', t2))
+        if features and old_features and len(features & old_features) / len(features) > 0.8:
             return True
     return False
 
@@ -111,7 +117,10 @@ def fetch_filtered_news(keywords, history, custom_query=None):
             if pub_date_utc.tzinfo is None: pub_date_utc = pub_date_utc.replace(tzinfo=timezone.utc)
             if (now_utc - pub_date_utc).total_seconds() > 86400: continue 
             
+            # 強制地理過濾：有排除詞直接殺
             if any(ex in title for ex in EXCLUDE_KEYWORDS): continue
+            
+            # 港區校驗：非本地媒體必須有香港地標才過關
             has_hk_place = any(loc in title for loc in HK_DISTRICTS)
             if any(intl in source for intl in INTL_SOURCES) and not has_hk_place: continue
             
@@ -124,7 +133,7 @@ def fetch_filtered_news(keywords, history, custom_query=None):
                     if "失蹤" in cleaned: emoji = "🔍"
                     found.append(f"{emoji} {cleaned}")
                     new_sent_titles.append(title)
-            if len(found) >= 8: break
+            if len(found) >= 10: break
     except: pass
     return found, new_sent_titles
 
@@ -143,7 +152,7 @@ def run_main():
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             history = [line.strip() for line in f]
 
-    m_list, m_new = fetch_filtered_news(MARITIME_KEYWORDS, history, custom_query="水警 OR 走私 OR 墮海 OR 警方 OR 內河船 OR 屯門失蹤")
+    m_list, m_new = fetch_filtered_news(MARITIME_KEYWORDS, history, custom_query="水警 OR 走私 OR 警方 OR 元朗 OR 沙田 OR 麥理浩徑")
 
     if now_hour == 8 and now_min < 30:
         vol = get_volatility_indices()
@@ -162,7 +171,7 @@ def run_main():
         f_today, f_new = fetch_filtered_news(FINANCE_KEYWORDS, set(), custom_query="港股 派息 業績 盈喜 VOO QQQ")
         if f_today: reports.append(f"\n💰 <b>財經焦點：</b>\n" + "\n".join(f_today))
         m_today, _ = fetch_filtered_news(MARITIME_KEYWORDS, set())
-        reports.append(f"\n⚠️ <b>24H 突發焦點：</b>\n" + "\n\n".join(m_today[:5]) if m_today else "\n⚓️ 暫無突發")
+        reports.append(f"\n⚠️ <b>24H 突發焦點：</b>\n" + "\n\n".join(m_today[:8]) if m_today else "\n⚓️ 暫無突發")
         send_tg("\n".join(reports))
         m_new = list(set(m_new + f_new))
     else:
