@@ -6,8 +6,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 import urllib.parse
-import email.utils
-import re
 
 # --- 1. 配置區 ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -20,24 +18,23 @@ WATCHLIST = {
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
-# --- 徹底補完：執法、罪案、救援關鍵字 ---
+# 執法、救援與【毒品】關鍵字 (全集)
 ACTION_KEYWORDS = [
-    "水警", "走私", "快艇", "大飛", "內河船", "小艇分區", "非法入境", "截獲", "私煙", "毒品", 
-    "警方", "警察", "警員", "反爆竊", "拘捕", "偵破", "掃黃", "黑工", "淋紅油", "收數", 
-    "跳海", "墮海", "自殺", "浮屍", "救起", "救生", "溺斃", "失蹤", "尋人", "撞船", "意外"
+    "水警", "走私", "快艇", "大飛", "內河船", "截獲", "警方", "警察", "警員", 
+    "拘捕", "偵破", "淋紅油", "跳海", "墮海", "浮屍", "救起", "失蹤",
+    "毒品", "大麻", "冰毒", "可卡因", "海洛英", "吸毒", "販毒", "毒梟", "製毒"
 ]
 
-# --- 徹底補完：監控區域 ---
-LOCATION_KEYWORDS = [
-    "大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青衣", "梅窩", 
-    "大欖涌", "元朗", "屯門", "天水圍", "深水埗", "西貢", "荃灣", "灣仔"
-]
+# 僅限香港相關地名 (確保與動作連結)
+HK_LOCATIONS = ["大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青衣", "梅窩", "大欖涌", "元朗", "屯門", "天水圍", "深水埗", "西貢", "荃灣", "灣仔", "香港"]
 
-# 政治與財經
-POLITICS_KEYWORDS = ["特朗普", "川普", "伊朗", "美伊戰爭", "霍爾木茲海峽", "停火協議", "開火行動"]
-EXCLUDE_KEYWORDS = ["2房", "3房", "沽出", "易手", "地產", "公屋", "成交", "零議價", "房委會", "美容", "食店", "雞蛋仔", "NBA", "足球"]
+# 戰爭精確字眼
+WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-# --- 2. 指標計算 (VIX, KDJ) ---
+# 雜訊排除
+EXCLUDE_KEYWORDS = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "日本警察", "印度", "柬埔寨", "安徽"]
+
+# --- 2. 數據計算 ---
 
 def get_market_indices():
     res = {"VIX": 0.0, "VHSI": 0.0}
@@ -63,9 +60,10 @@ def get_kdj_data(ticker, interval):
 
 def fetch_news_engine(history, mode="MARITIME"):
     if mode == "MARITIME":
-        query = "水警 OR 走私 OR 警方 OR 警察 OR 跳海 OR 墮海 OR 拘捕"
-    elif mode == "POLITICS":
-        query = "特朗普 伊朗 戰爭"
+        # 增加毒品相關搜尋詞
+        query = "水警 OR 走私 OR 警方 OR 警察 OR 跳海 OR 毒品 OR 販毒"
+    elif mode == "WAR":
+        query = " OR ".join([f'"{k}"' for k in WAR_KEYWORDS])
     else: # FINANCE
         query = " OR ".join(WATCHLIST.values())
 
@@ -77,24 +75,23 @@ def fetch_news_engine(history, mode="MARITIME"):
         soup = BeautifulSoup(r.content, 'xml')
         for item in soup.find_all('item'):
             t = item.title.text
-            src = item.source.text if item.source else "未知"
             if any(ex in t for ex in EXCLUDE_KEYWORDS): continue
             
             valid = False
             if mode == "MARITIME":
-                # 關鍵邏輯：標題必須含有「動作」字眼
-                if any(act in t for act in ACTION_KEYWORDS):
+                # 必須有動作字眼（含毒品）且涉及香港地名
+                if any(act in t for act in ACTION_KEYWORDS) and any(loc in t for loc in HK_LOCATIONS):
                     valid = True
-            elif mode == "POLITICS":
-                if any(pk in t for pk in POLITICS_KEYWORDS): valid = True
-            else:
+            elif mode == "WAR":
+                if any(wk in t for wk in WAR_KEYWORDS): valid = True
+            elif mode == "FINANCE":
                 if any(stock in t for stock in WATCHLIST.values()): valid = True
 
             if valid:
                 clean = t.split(' - ')[0].strip()
                 if not any(clean[:10] in h for h in history + raw_t):
-                    emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "POLITICS" else "💰"
-                    found.append(f"{emoji} {clean} ({src})")
+                    emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
+                    found.append(f"{emoji} {clean}")
                     raw_t.append(t)
             if len(found) >= 10: break
     except: pass
@@ -109,21 +106,12 @@ def run_monitor():
     hist = []
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f: hist = [l.strip() for l in f]
-    
-    status = {"last_p_date": str(now.date())}
-    if os.path.exists(STATUS_FILE):
-        with open(STATUS_FILE, "r") as f: status = json.load(f)
-    p_active = (now.date() - datetime.strptime(status["last_p_date"], "%Y-%m-%d").date()).days <= 14
 
     m_list, m_raw = fetch_news_engine(hist, "MARITIME")
-    p_list, p_raw = (fetch_news_engine(hist, "POLITICS") if p_active else ([], []))
+    w_list, w_raw = fetch_news_engine(hist, "WAR")
     f_list, f_raw = fetch_news_engine(hist, "FINANCE")
 
-    if p_list:
-        status["last_p_date"] = str(now.date())
-        with open(STATUS_FILE, "w") as f: json.dump(status, f)
-
-    # 08:00 報告
+    # 08:00 綜合報告
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         rep = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
@@ -133,20 +121,19 @@ def run_monitor():
             t_obj = yf.Ticker(s)
             p = t_obj.history(period="1d")['Close'].iloc[-1]
             wk_v, mo_v = get_kdj_data(s, "1wk"), get_kdj_data(s, "1mo")
-            wk_s = f"🔥<b>{wk_v:.1f}</b>" if wk_v < 20 else f"{wk_v:.1f}"
-            mo_s = f"💎<b>{mo_v:.1f}</b>" if mo_v < 20 else f"{mo_v:.1f}"
-            rep.append(f"• {name}: <b>{p:.2f}</b> | 週:{wk_s} 月:{mo_s}")
+            rep.append(f"• {name}: <b>{p:.2f}</b> | 週:{wk_v:.1f} 月:{mo_v:.1f}")
+        
         if f_list: rep.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_list))
-        if p_list: rep.append(f"\n🌍 <b>美伊局勢：</b>\n" + "\n".join(p_list))
+        if w_list: rep.append(f"\n🌍 <b>戰爭局勢：</b>\n" + "\n".join(w_list))
         if m_list: rep.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(m_list))
         send_tg("\n".join(rep))
     else:
-        # 日間通知
-        urgent = m_list + p_list + f_list
+        # 日間通知：剔除💰，保留⚓️和🌍
+        urgent = m_list + w_list
         if urgent:
             send_tg(f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent))
 
-    all_raw = m_raw + p_raw + f_raw
+    all_raw = m_raw + w_raw + f_raw
     if all_raw:
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
             for t in set(all_raw): f.write(t + "\n")
