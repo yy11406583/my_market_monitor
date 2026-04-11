@@ -26,39 +26,39 @@ WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭
 GLOBAL_EXCLUDE = ["日本", "台灣", "台北", "柬埔寨", "馬來西亞", "泰國", "安徽", "廣州", "深圳", "印度", "韓國", "加拿大", "上海"]
 NOISE_EXCLUDE = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "食評", "監控流出", "有片", "黑衫變白T"]
 
-# --- 1. 標準化標題 (分模式處理) ---
+# --- 1. 標準化與輔助函數 ---
+
 def normalize_title(title, keep_alphanum=False):
-    """移除噪音。keep_alphanum=True 時保留字母數字（用於財經模式）"""
     noise = ["突發", "有片", "更新", "最新", "快訊", "即時", "圖輯", "多圖"]
     for p in noise:
         title = title.replace(p, "")
-    
     if keep_alphanum:
-        # 保留中文、英文、數字
         title = re.sub(r"[^\u4e00-\u9fa5a-zA-Z0-9]+", " ", title)
     else:
-        # 僅保留中文
         title = re.sub(r"[^\u4e00-\u9fa5]+", "", title)
     return title.strip().lower()
 
-# --- 2. AI 語意去重邏輯 ---
 def is_duplicate_ai(new_title, pool, keep_en=False):
     new_norm = normalize_title(new_title, keep_alphanum=keep_en)
     if not new_norm: return False
-    
     for old in pool:
         old_norm = normalize_title(old, keep_alphanum=keep_en)
         if not old_norm: continue
-        
-        # 1. 前綴硬匹配
         if new_norm[:10] == old_norm[:10]: return True
-        
-        # 2. 語意相似度計算
-        ratio = SequenceMatcher(None, new_norm, old_norm).ratio()
-        if ratio > 0.65: return True
+        if SequenceMatcher(None, new_norm, old_norm).ratio() > 0.65: return True
     return False
 
-# --- 3. 數據與歷史管理 ---
+def send_tg(message):
+    """定義發送功能，確保在 run_monitor 之前或被調用時已存在"""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
+        requests.post(url, data=payload, timeout=15)
+    except:
+        pass
+
+# --- 2. 數據獲取 ---
+
 def load_history(file_path):
     if not os.path.exists(file_path): return []
     valid = []
@@ -66,7 +66,7 @@ def load_history(file_path):
         for line in f:
             if "||" in line: valid.append(line.split("||", 1)[1].strip())
             else: valid.append(line.strip())
-    return valid[-300:] # 取最近300條增加比對深度
+    return valid[-300:]
 
 def save_history(file_path, items):
     hk_tz = timezone(timedelta(hours=8))
@@ -95,7 +95,8 @@ def get_kdj_data(ticker, interval):
         return k
     except: return 50.0
 
-# --- 4. 核心新聞引擎 ---
+# --- 3. 新聞引擎 ---
+
 def fetch_news_engine(mode, title_history, link_history):
     if mode == "MARITIME": query = "水警 OR 走私 OR 警方 OR 警察 OR 毒品 OR 劫案"
     elif mode == "WAR": query = " OR ".join([f'"{k}"' for k in WAR_KEYWORDS])
@@ -110,25 +111,20 @@ def fetch_news_engine(mode, title_history, link_history):
         for item in soup.find_all('item'):
             title = item.title.text.split(' - ')[0].strip()
             link = item.link.text if item.link else ""
-
-            # 連結絕對去重
             if link in link_history: continue
-            
-            # 雜訊排除
             if any(ex in title for ex in NOISE_EXCLUDE): continue
             if mode == "MARITIME" and any(gx in title for gx in GLOBAL_EXCLUDE): continue
 
-            # AI 語意去重 (分模式決定是否保留英文)
+            # 使用你修正的 keep_en 邏輯
             keep_en = (mode == "FINANCE")
             if is_duplicate_ai(title, title_history + current_titles, keep_en): continue
 
-            # 模式驗證
             valid = False
             if mode == "MARITIME":
                 if any(act in title for act in ACTION_KEYWORDS) and any(loc in title for loc in HK_LOCATIONS):
                     valid = True
             elif mode == "WAR":
-                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落", "協議", "賠償"]):
+                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落", "協議"]):
                     valid = True
             elif mode == "FINANCE":
                 if any(stock in title for stock in WATCHLIST.values()):
@@ -139,12 +135,12 @@ def fetch_news_engine(mode, title_history, link_history):
                 found.append(f"{emoji} {title}")
                 current_titles.append(title)
                 if link: current_links.append(link)
-            
             if len(found) >= 4: break
     except: pass
     return found, current_titles, current_links
 
-# --- 5. 運行流程 ---
+# --- 4. 主程序 ---
+
 def run_monitor():
     hk_tz = timezone(timedelta(hours=8))
     now = datetime.now(hk_tz)
@@ -157,7 +153,6 @@ def run_monitor():
     f_news, f_t, f_l = fetch_news_engine("FINANCE", t_hist, l_hist)
     w_news_all, w_t_all, w_l_all = fetch_news_engine("WAR", t_hist, l_hist)
 
-    # 戰爭新聞處理 (睡眠時段僅限核、爆發、緊急、開火)
     w_news, w_t, w_l = [], [], []
     for i, news in enumerate(w_news_all):
         if is_sleep_time:
@@ -166,7 +161,6 @@ def run_monitor():
         else:
             w_news.append(news); w_t.append(w_t_all[i]); w_l.append(w_l_all[i])
 
-    # 輸出大報告 (08:00) 或即時情報
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
@@ -175,7 +169,7 @@ def run_monitor():
         for sym, name in WATCHLIST.items():
             try: p = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
             except: p = 0.0
-            report.append(f"• {name}: <b>{p:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
+            report.append(f"• {name}: <b>{price:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
         
         if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
         if w_news: report.append(f"\n🌍 <b>戰爭局勢：</b>\n" + "\n".join(w_news))
@@ -186,7 +180,6 @@ def run_monitor():
         if urgent:
             send_tg(f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent))
 
-    # 保存歷史
     save_history(HISTORY_FILE, m_t + w_t + f_t)
     save_history(LINK_HISTORY_FILE, m_l + w_l + f_l)
 
