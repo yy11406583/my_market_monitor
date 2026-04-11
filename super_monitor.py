@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
-MAX_HISTORY_DAYS = 7
+MAX_HISTORY_DAYS = 7  # 歷史記錄保留天數
 
 WATCHLIST = {
     "3466.HK": "恒生高息股", "0941.HK": "中移動",
@@ -26,7 +26,7 @@ WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭
 GLOBAL_EXCLUDE = ["日本", "台灣", "台北", "柬埔寨", "馬來西亞", "泰國", "安徽", "廣州", "深圳", "印度", "韓國", "加拿大", "上海"]
 NOISE_EXCLUDE = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "食評", "監控流出", "有片", "黑衫變白T"]
 
-# --- 1. 標準化與輔助函數 ---
+# --- 1. 輔助函數 ---
 
 def normalize_title(title, keep_alphanum=False):
     noise = ["突發", "有片", "更新", "最新", "快訊", "即時", "圖輯", "多圖"]
@@ -49,7 +49,6 @@ def is_duplicate_ai(new_title, pool, keep_en=False):
     return False
 
 def send_tg(message):
-    """定義發送功能，確保在 run_monitor 之前或被調用時已存在"""
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
@@ -57,15 +56,24 @@ def send_tg(message):
     except:
         pass
 
-# --- 2. 數據獲取 ---
+# --- 2. 數據獲取與管理 ---
 
 def load_history(file_path):
     if not os.path.exists(file_path): return []
     valid = []
-    with open(file_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if "||" in line: valid.append(line.split("||", 1)[1].strip())
-            else: valid.append(line.strip())
+    now = datetime.now(timezone(timedelta(hours=8)))
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if "||" in line:
+                    ts_str, content = line.split("||", 1)
+                    # 自動清理超過 7 天的舊記錄
+                    if now - datetime.fromisoformat(ts_str) <= timedelta(days=MAX_HISTORY_DAYS):
+                        valid.append(content)
+                else:
+                    valid.append(line)
+    except: pass
     return valid[-300:]
 
 def save_history(file_path, items):
@@ -115,7 +123,6 @@ def fetch_news_engine(mode, title_history, link_history):
             if any(ex in title for ex in NOISE_EXCLUDE): continue
             if mode == "MARITIME" and any(gx in title for gx in GLOBAL_EXCLUDE): continue
 
-            # 使用你修正的 keep_en 邏輯
             keep_en = (mode == "FINANCE")
             if is_duplicate_ai(title, title_history + current_titles, keep_en): continue
 
@@ -124,7 +131,7 @@ def fetch_news_engine(mode, title_history, link_history):
                 if any(act in title for act in ACTION_KEYWORDS) and any(loc in title for loc in HK_LOCATIONS):
                     valid = True
             elif mode == "WAR":
-                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落", "協議"]):
+                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落"]):
                     valid = True
             elif mode == "FINANCE":
                 if any(stock in title for stock in WATCHLIST.values()):
@@ -167,9 +174,12 @@ def run_monitor():
         report.append(f"• VIX: {v_idx['VIX']:.2f} | VHSI: {v_idx['VHSI']:.2f}\n")
         report.append("<b>【持倉 KDJ】</b>")
         for sym, name in WATCHLIST.items():
-            try: p = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
-            except: p = 0.0
-            report.append(f"• {name}: <b>{price:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
+            try:
+                # 修正：變量名統一為 p
+                p = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
+            except:
+                p = 0.0
+            report.append(f"• {name}: <b>{p:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
         
         if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
         if w_news: report.append(f"\n🌍 <b>戰爭局勢：</b>\n" + "\n".join(w_news))
