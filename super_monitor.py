@@ -1,7 +1,6 @@
 import yfinance as yf
 import requests
 import os
-import json
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 import urllib.parse
@@ -17,29 +16,28 @@ WATCHLIST = {
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
-# 動作關鍵字
-ACTION_KEYWORDS = ["水警", "走私", "快艇", "大飛", "截獲", "警方", "警察", "警員", "拘捕", "偵破", "淋紅油", "跳海", "墮海", "浮屍", "救起", "失蹤", "毒品", "販毒", "搶劫", "劫案"]
-# 香港地名 (嚴格配對)
+# 執法與救援關鍵字 (包含毒品、搶劫、水警)
+ACTION_KEYWORDS = ["水警", "走私", "快艇", "大飛", "截獲", "警方", "警察", "警員", "拘捕", "偵破", "淋紅油", "跳海", "墮海", "浮屍", "救起", "失蹤", "毒品", "販毒", "搶劫", "劫案", "氣槍", "贓款"]
 HK_LOCATIONS = ["大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青衣", "梅窩", "大欖涌", "元朗", "屯門", "天水圍", "深水埗", "西貢", "荃灣", "灣仔", "香港", "柴灣", "機場"]
-# 戰爭指定字眼
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-# ⚠️ 嚴格排除非香港地區 (防止日本、台灣新聞穿透)
-GLOBAL_EXCLUDE = ["日本", "台灣", "台北", "柬埔寨", "馬來西亞", "泰國", "安徽", "廣州", "深圳", "印度", "韓國", "首爾", "加拿大"]
-# 雜訊排除
-NOISE_EXCLUDE = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "食評"]
+# 嚴格排除
+GLOBAL_EXCLUDE = ["日本", "台灣", "台北", "柬埔寨", "馬來西亞", "泰國", "安徽", "廣州", "深圳", "印度", "韓國", "加拿大"]
+NOISE_EXCLUDE = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "食評", "監控流出"]
 
 # --- 2. 數據修復與計算 ---
 
 def get_market_indices():
     res = {"VIX": 0.0, "VHSI": 0.0}
     try:
+        # VIX
         res["VIX"] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        # VHSI 回溯修復邏輯
-        vhsi_data = yf.Ticker("^VHSI").history(period="7d")
-        if not vhsi_data.empty:
-            valid = vhsi_data['Close'][vhsi_data['Close'] > 0]
-            if not valid.empty: res["VHSI"] = valid.iloc[-1]
+        # VHSI 數據修復邏輯 (若今日為0，回溯最多7天尋找有效值)
+        v_data = yf.Ticker("^VHSI").history(period="7d")
+        if not v_data.empty:
+            valid_vals = v_data['Close'][v_data['Close'] > 0]
+            if not valid_vals.empty:
+                res["VHSI"] = valid_vals.iloc[-1]
     except: pass
     return res
 
@@ -52,11 +50,17 @@ def get_kdj_data(ticker, interval):
         return k
     except: return 50.0
 
-# --- 3. 智能過濾與去重 ---
+# --- 3. 內置「AI式」去重邏輯 (免費且高效) ---
 
-def is_duplicate(new_title, history):
-    for h in history[-30:]:
-        if SequenceMatcher(None, new_title, h).ratio() > 0.6: return True
+def is_duplicate(new_title, pool):
+    """
+    使用模糊匹配算法，防止同一個事件(如灣仔劫案)以不同標題重複推送。
+    """
+    for h in pool:
+        # 1. 前綴匹配 (前10個字一樣就當重複)
+        if new_title[:10] in h or h[:10] in new_title: return True
+        # 2. 相似度匹配 (超過 0.5 相似度即過濾)
+        if SequenceMatcher(None, new_title, h).ratio() > 0.5: return True
     return False
 
 def fetch_news_engine(history, mode="MARITIME"):
@@ -68,7 +72,7 @@ def fetch_news_engine(history, mode="MARITIME"):
         query = " OR ".join(WATCHLIST.values())
 
     url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
-    found, raw_t = [], []
+    found, current_pool = [], []
     
     try:
         r = requests.get(url, timeout=15)
@@ -77,61 +81,64 @@ def fetch_news_engine(history, mode="MARITIME"):
             t = item.title.text
             clean = t.split(' - ')[0].strip()
             
-            # 1. 基本雜訊排除
-            if any(ex in t for ex in NOISE_EXCLUDE): continue
-            # 2. 嚴格地區過濾 (防止非香港新聞)
-            if mode == "MARITIME" and any(gx in t for gx in GLOBAL_EXCLUDE): continue
-            # 3. 去重
-            if is_duplicate(clean, history + raw_t): continue
+            # 過濾雜訊與非本地新聞
+            if any(ex in clean for ex in NOISE_EXCLUDE): continue
+            if mode == "MARITIME" and any(gx in clean for gx in GLOBAL_EXCLUDE): continue
+            
+            # 強力去重
+            if is_duplicate(clean, history + current_pool): continue
             
             valid = False
             if mode == "MARITIME":
-                # 必須有動作 + 必須有香港地名
-                if any(act in t for act in ACTION_KEYWORDS) and any(loc in t for loc in HK_LOCATIONS):
+                if any(act in clean for act in ACTION_KEYWORDS) and any(loc in clean for loc in HK_LOCATIONS):
                     valid = True
             elif mode == "WAR":
-                if any(wk in t for wk in WAR_KEYWORDS):
-                    valid = True
+                if any(wk in clean for wk in WAR_KEYWORDS):
+                    # 戰爭新聞二次篩選：只抓有動態進展的
+                    if any(v in clean for v in ["談判", "開火", "停火", "死", "擊落", "關鎖", "協議", "賠償"]):
+                        valid = True
             elif mode == "FINANCE":
-                if any(stock in t for stock in WATCHLIST.values()):
+                if any(stock in clean for stock in WATCHLIST.values()):
                     valid = True
 
             if valid:
                 emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
                 found.append(f"{emoji} {clean}")
-                raw_t.append(clean)
-            if len(found) >= 5: break
+                current_pool.append(clean)
+            
+            if len(found) >= 3: break # 每類僅取前3條最關鍵的
     except: pass
-    return found, raw_t
+    return found, current_pool
 
-# --- 4. 主流程 ---
+# --- 4. 執行流程 ---
 
 def run_monitor():
     hk_tz = timezone(timedelta(hours=8))
     now = datetime.now(hk_tz)
     hr = now.hour
     
-    # 睡眠模式修正：23:00 - 08:00
+    # 睡眠模式：23:00 - 08:00
     is_sleep_time = (hr >= 23 or hr < 8)
 
     hist = []
     if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f: hist = [l.strip() for l in f]
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            hist = [l.strip() for l in f][-150:] # 擴大對比池到150條
 
     m_list, m_raw = fetch_news_engine(hist, "MARITIME")
     f_list, f_raw = fetch_news_engine(hist, "FINANCE")
     
-    # 戰爭新聞邏輯：睡眠時間僅發送「極端緊急」新聞
-    w_list_raw, w_raw = fetch_news_engine(hist, "WAR")
+    # 戰爭新聞處理
+    w_list_all, w_raw = fetch_news_engine(hist, "WAR")
     w_list = []
     if is_sleep_time:
-        for news in w_list_raw:
-            if any(k in news for k in ["核", "爆發", "緊急", "開火", "全線"]):
-                w_list.append(news)
+        # 睡眠時間：僅限極端突發
+        for n in w_list_all:
+            if any(k in n for k in ["核", "爆發", "緊急", "開火"]): w_list.append(n)
     else:
-        w_list = w_list_raw
+        w_list = w_list_all
 
-    # A. 08:00 綜合報告
+    # 08:00 綜合報告
     if hr == 8 and now.minute < 30:
         v_idx = get_market_indices()
         rep = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
@@ -148,19 +155,20 @@ def run_monitor():
         if m_list: rep.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(m_list))
         send_tg("\n".join(rep))
     else:
-        # B. 日間通知
+        # 日間即時通知 (不含財經)
         urgent = m_list + w_list
         if urgent:
             send_tg(f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent))
 
-    # 紀錄
+    # 存入歷史
     all_raw = m_raw + w_raw + f_raw
     if all_raw:
         with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-            for t in set(all_raw): f.write(t + "\n")
+            for t in all_raw: f.write(t + "\n")
 
 def send_tg(m):
-    try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": m, "parse_mode": "HTML"}, timeout=15)
+    try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                       data={"chat_id": CHAT_ID, "text": m, "parse_mode": "HTML"}, timeout=15)
     except: pass
 
 if __name__ == "__main__":
