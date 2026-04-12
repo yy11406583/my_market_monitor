@@ -2,31 +2,40 @@ import yfinance as yf
 import requests
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 import urllib.parse
 from difflib import SequenceMatcher
 
-# --- 配置區 ---
+# --- 1. 配置區 ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
-MAX_HISTORY_DAYS = 7  # 歷史記錄保留天數
+MAX_HISTORY_DAYS = 7
 
 WATCHLIST = {
     "3466.HK": "恒生高息股", "0941.HK": "中移動",
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
-ACTION_KEYWORDS = ["水警", "走私", "快艇", "大飛", "截獲", "警方", "警察", "警員", "拘捕", "偵破", "淋紅油", "跳海", "墮海", "浮屍", "救起", "失蹤", "毒品", "販毒", "吸毒", "大麻", "冰毒", "可卡因", "海洛英", "搶劫", "劫案", "氣槍", "贓款"]
+HARD_ACTIONS = [
+    "走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "浮屍", "救起", "毒品", "販毒", 
+    "搶劫", "劫案", "贓款", "開火", "封鎖", "現場", "衝擊", "搜索", "查獲", 
+    "檢獲", "搗破", "瓦解", "通緝", "命案", "車禍", "受傷", "強姦", "非禮", "失蹤"
+]
+POLICE_KEYWORDS = ["水警", "警方", "警察", "警員"]
 HK_LOCATIONS = ["大嶼山", "南丫島", "長洲", "後海灣", "吐露港", "昂船洲", "青衣", "梅窩", "大欖涌", "元朗", "屯門", "天水圍", "深水埗", "西貢", "荃灣", "灣仔", "香港", "柴灣", "機場", "告士打道"]
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
 GLOBAL_EXCLUDE = ["日本", "台灣", "台北", "柬埔寨", "馬來西亞", "泰國", "安徽", "廣州", "深圳", "印度", "韓國", "加拿大", "上海"]
-NOISE_EXCLUDE = ["2房", "沽出", "地產", "美容", "雞蛋仔", "NBA", "足球", "食評", "監控流出", "有片", "黑衫變白T"]
+NOISE_EXCLUDE = [
+    "年報", "招募", "推廣", "App", "課程", "演習", "比賽", "典禮", "講座", 
+    "展覽", "慶祝", "紀念", "心得", "分享", "投考", "委任", "晉升", "2房", "沽出", "地產"
+]
 
-# --- 1. 輔助函數 ---
+# --- 2. 輔助函數 ---
 
 def normalize_title(title, keep_alphanum=False):
     noise = ["突發", "有片", "更新", "最新", "快訊", "即時", "圖輯", "多圖"]
@@ -53,10 +62,9 @@ def send_tg(message):
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
         requests.post(url, data=payload, timeout=15)
-    except:
-        pass
+    except: pass
 
-# --- 2. 數據獲取與管理 ---
+# --- 3. 數據與重試邏輯 ---
 
 def load_history(file_path):
     if not os.path.exists(file_path): return []
@@ -68,11 +76,9 @@ def load_history(file_path):
                 line = line.strip()
                 if "||" in line:
                     ts_str, content = line.split("||", 1)
-                    # 自動清理超過 7 天的舊記錄
                     if now - datetime.fromisoformat(ts_str) <= timedelta(days=MAX_HISTORY_DAYS):
                         valid.append(content)
-                else:
-                    valid.append(line)
+                else: valid.append(line)
     except: pass
     return valid[-300:]
 
@@ -80,38 +86,53 @@ def save_history(file_path, items):
     hk_tz = timezone(timedelta(hours=8))
     now = datetime.now(hk_tz).isoformat()
     with open(file_path, "a", encoding="utf-8") as f:
-        for item in items:
-            f.write(f"{now}||{item}\n")
+        for item in items: f.write(f"{now}||{item}\n")
 
 def get_market_indices():
     res = {"VIX": 0.0, "VHSI": 0.0}
-    try:
-        res["VIX"] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        v_hist = yf.Ticker("^VHSI").history(period="7d")
-        if not v_hist.empty:
-            valid = v_hist['Close'][v_hist['Close'] > 0]
-            if not valid.empty: res["VHSI"] = valid.iloc[-1]
-    except: pass
+    for _ in range(3):
+        try:
+            v_val = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+            if v_val > 0:
+                res["VIX"] = v_val
+                break
+        except: time.sleep(2)
+        
+    for symbol in ["^HSI-VHSI", "^VHSI"]:
+        if res["VHSI"] > 0: break
+        for _ in range(3):
+            try:
+                v_hist = yf.Ticker(symbol).history(period="7d")
+                if not v_hist.empty:
+                    valid = v_hist['Close'][v_hist['Close'] > 0]
+                    if not valid.empty:
+                        res["VHSI"] = valid.iloc[-1]
+                        break
+            except: time.sleep(2)
     return res
 
 def get_kdj_data(ticker, interval):
-    try:
-        df = yf.Ticker(ticker).history(period="2y", interval=interval)
-        low, high = df['Low'].rolling(9).min(), df['High'].rolling(9).max()
-        rsv = (df['Close'] - low) / (high - low) * 100
-        k = rsv.ewm(com=2, adjust=False).mean().iloc[-1]
-        return k
-    except: return 50.0
+    for _ in range(3):
+        try:
+            df = yf.Ticker(ticker).history(period="2y", interval=interval)
+            low, high = df['Low'].rolling(9).min(), df['High'].rolling(9).max()
+            rsv = (df['Close'] - low) / (high - low) * 100
+            k = rsv.ewm(com=2, adjust=False).mean().iloc[-1]
+            return k
+        except: time.sleep(1)
+    return 50.0
 
-# --- 3. 新聞引擎 ---
+# --- 4. 新聞引擎 ---
 
 def fetch_news_engine(mode, title_history, link_history):
-    if mode == "MARITIME": query = "水警 OR 走私 OR 警方 OR 警察 OR 毒品 OR 劫案"
+    if mode == "MARITIME": query = "水警 OR 走私 OR 警察 OR 毒品 OR 劫案"
     elif mode == "WAR": query = " OR ".join([f'"{k}"' for k in WAR_KEYWORDS])
     else: query = " OR ".join(WATCHLIST.values())
 
     url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
     found, current_titles, current_links = [], [], []
+    hk_now = datetime.now(timezone(timedelta(hours=8)))
+    is_daytime = (8 <= hk_now.hour < 23)
 
     try:
         r = requests.get(url, timeout=15)
@@ -121,18 +142,24 @@ def fetch_news_engine(mode, title_history, link_history):
             link = item.link.text if item.link else ""
             if link in link_history: continue
             if any(ex in title for ex in NOISE_EXCLUDE): continue
-            if mode == "MARITIME" and any(gx in title for gx in GLOBAL_EXCLUDE): continue
-
+            
             keep_en = (mode == "FINANCE")
             if is_duplicate_ai(title, title_history + current_titles, keep_en): continue
 
             valid = False
             if mode == "MARITIME":
-                if any(act in title for act in ACTION_KEYWORDS) and any(loc in title for loc in HK_LOCATIONS):
-                    valid = True
+                if any(gx in title for gx in GLOBAL_EXCLUDE): continue
+                has_authority = any(pk in title for pk in POLICE_KEYWORDS)
+                has_action = any(ha in title for ha in HARD_ACTIONS)
+                has_loc = any(loc in title for loc in HK_LOCATIONS)
+                if has_authority and has_loc:
+                    if is_daytime: valid = True
+                    elif has_action: valid = True
+            
             elif mode == "WAR":
-                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落"]):
+                if any(wk in title for wk in WAR_KEYWORDS) and any(v in title for v in ["談判", "開火", "停火", "死", "擊落", "協議"]):
                     valid = True
+            
             elif mode == "FINANCE":
                 if any(stock in title for stock in WATCHLIST.values()):
                     valid = True
@@ -146,13 +173,12 @@ def fetch_news_engine(mode, title_history, link_history):
     except: pass
     return found, current_titles, current_links
 
-# --- 4. 主程序 ---
+# --- 5. 主程序 ---
 
 def run_monitor():
     hk_tz = timezone(timedelta(hours=8))
     now = datetime.now(hk_tz)
-    is_sleep_time = (now.hour >= 23 or now.hour < 8)
-
+    
     t_hist = load_history(HISTORY_FILE)
     l_hist = load_history(LINK_HISTORY_FILE)
 
@@ -161,6 +187,7 @@ def run_monitor():
     w_news_all, w_t_all, w_l_all = fetch_news_engine("WAR", t_hist, l_hist)
 
     w_news, w_t, w_l = [], [], []
+    is_sleep_time = (now.hour >= 23 or now.hour < 8)
     for i, news in enumerate(w_news_all):
         if is_sleep_time:
             if any(k in news for k in ["核", "爆發", "緊急", "開火"]):
@@ -168,18 +195,23 @@ def run_monitor():
         else:
             w_news.append(news); w_t.append(w_t_all[i]); w_l.append(w_l_all[i])
 
+    # 早上 8 點報告
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
+        # 修正後的變量引用
         report.append(f"• VIX: {v_idx['VIX']:.2f} | VHSI: {v_idx['VHSI']:.2f}\n")
         report.append("<b>【持倉 KDJ】</b>")
         for sym, name in WATCHLIST.items():
-            try:
-                # 修正：變量名統一為 p
-                p = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
-            except:
-                p = 0.0
-            report.append(f"• {name}: <b>{p:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
+            price_val = 0.0
+            for _ in range(3):
+                try:
+                    p_data = yf.Ticker(sym).history(period="1d")
+                    if not p_data.empty:
+                        price_val = p_data['Close'].iloc[-1]
+                        break
+                except: time.sleep(1)
+            report.append(f"• {name}: <b>{price_val:.2f}</b> | 週:{get_kdj_data(sym, '1wk'):.1f} 月:{get_kdj_data(sym, '1mo'):.1f}")
         
         if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
         if w_news: report.append(f"\n🌍 <b>戰爭局勢：</b>\n" + "\n".join(w_news))
