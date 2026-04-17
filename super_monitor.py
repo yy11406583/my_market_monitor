@@ -22,30 +22,29 @@ WATCHLIST = {
     "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
 }
 
-# 突發動作關鍵字（夜間嚴格過濾必須包含之一）
 HARD_ACTIONS = [
     "走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "浮屍", "救起", "毒品", "販毒",
     "搶劫", "劫案", "贓款", "開火", "封鎖", "現場", "衝擊", "搜索", "查獲",
     "檢獲", "搗破", "瓦解", "通緝", "命案", "車禍", "受傷", "強姦", "非禮", "失蹤"
 ]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員"]
-
-# 戰爭關鍵字
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-# 外地排除黑名單（取代地點白名單，防止漏掉堅尼地城等本地新聞）
+# 外地排除黑名單（新增澳門、新疆等，防止外地警察新聞誤報）
 GLOBAL_EXCLUDE = [
     "日本", "台灣", "台北", "高雄", "柬埔寨", "馬來西亞", "泰國", "新加坡",
     "安徽", "廣州", "深圳", "珠海", "上海", "北京", "天津", "重慶", "成都",
     "印度", "韓國", "加拿大", "美國", "英國", "澳洲", "新西蘭",
-    "內地", "大陸", "中國內地", "中国内地"
+    "內地", "大陸", "中國內地", "中国内地",
+    "澳門", "澳门", "新疆", "西藏"
 ]
 
-# 噪音排除（屏蔽非新聞類的公關、行政內容）
+# 噪音排除（新增就職、儀式、外媒，剔除公關類、政治敏感類內容）
 NOISE_EXCLUDE = [
     "年報", "招募", "推廣", "App", "課程", "演習", "比賽", "典禮", "講座",
     "展覽", "慶祝", "紀念", "心得", "分享", "投考", "委任", "晉升", "2房",
-    "沽出", "地產", "警察隊員佐級協會", "警察儲蓄互助社", "遮仔會"
+    "沽出", "地產", "警察隊員佐級協會", "警察儲蓄互助社", "遮仔會",
+    "就職", "儀式", "法新社", "路透社"
 ]
 
 # ==================== 2. 輔助函數 ====================
@@ -66,7 +65,9 @@ def is_duplicate_ai(new_title, pool, keep_en=False):
     for old in pool:
         old_norm = normalize_title(old, keep_alphanum=keep_en)
         if not old_norm: continue
+        # 如果前 10 個中文字完全一樣，直接判定為重複
         if new_norm[:10] == old_norm[:10]: return True
+        # 相似度閾值 0.65
         if SequenceMatcher(None, new_norm, old_norm).ratio() > 0.65: return True
     return False
 
@@ -103,7 +104,7 @@ def save_history(file_path, items):
 
 def get_market_indices():
     res = {"VIX": 0.0, "VHSI": 0.0}
-    # VIX (yfinance 仍穩定)
+    # VIX (yfinance)
     for _ in range(3):
         try:
             v_val = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
@@ -112,7 +113,7 @@ def get_market_indices():
                 break
         except: time.sleep(2)
 
-    # VHSI (改用 akshare，解決 yfinance 報 0 問題)
+    # VHSI (akshare)
     for _ in range(3):
         try:
             df = ak.index_vhsi()
@@ -163,7 +164,7 @@ def fetch_news_engine(mode, title_history, link_history):
             if link in link_history: continue
             if any(ex in title for ex in NOISE_EXCLUDE): continue
 
-            # 2. 時效性：只保留 24 小時內的新聞 (排除 2 月等舊聞)
+            # 2. 時效性：24 小時內
             pub_date_tag = item.pubDate
             if pub_date_tag:
                 try:
@@ -180,15 +181,15 @@ def fetch_news_engine(mode, title_history, link_history):
 
             valid = False
             if mode == "MARITIME":
-                # 改用排除法：只要不是外地，且有警察關鍵字就可能是本地突發
+                # 外地排除
                 if any(gx in title for gx in GLOBAL_EXCLUDE): continue
                 
                 has_authority = any(pk in title for pk in POLICE_KEYWORDS)
                 has_action = any(ha in title for ha in HARD_ACTIONS)
                 
                 if has_authority:
-                    if is_daytime: valid = True # 白天有警察新聞就報
-                    elif has_action: valid = True # 睡覺時間需有具體動作才報
+                    if is_daytime: valid = True 
+                    elif has_action: valid = True
             
             elif mode == "WAR":
                 if any(wk in title for wk in WAR_KEYWORDS) and any(
@@ -232,7 +233,6 @@ def run_monitor():
         else:
             w_news.append(news); w_t.append(w_t_all[i]); w_l.append(w_l_all[i])
 
-    # 早上 8 點報告
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
@@ -254,12 +254,10 @@ def run_monitor():
         if m_news: report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(m_news))
         send_tg("\n".join(report))
     else:
-        # 即時推送
         urgent = m_news + w_news
         if urgent:
             send_tg(f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent))
 
-    # 保存歷史
     save_history(HISTORY_FILE, m_t + w_t + f_t)
     save_history(LINK_HISTORY_FILE, m_l + w_l + f_l)
 
