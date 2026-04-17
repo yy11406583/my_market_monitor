@@ -3,7 +3,6 @@ name: 2-Hour Smart Monitor V3
 on:
   schedule:
     - cron: '55 */2 * * *'
-  # 這是接收外部 (Cron-job.org) 信號的關鍵設定
   repository_dispatch:
     types: [manual_trigger]
   workflow_dispatch:
@@ -31,7 +30,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 yfinance pandas lxml
+          # 這裡加入了 akshare，解決你的 ModuleNotFoundError
+          pip install requests beautifulsoup4 yfinance pandas lxml akshare
 
       - name: Execute Monitor Script
         env:
@@ -43,6 +43,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          touch sent_news.txt
-          git add sent_news.txt
+          # 同時處理內容和連結的紀錄檔
+          touch sent_news.txt sent_links.txt
+          git add sent_news.txt sent_links.txt
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update news history [skip ci]" && git push origin main)
