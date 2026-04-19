@@ -17,28 +17,23 @@ HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
 MAX_HISTORY_DAYS = 7
 
+# 持倉名單：已加入 Tesla 與 Microsoft
 WATCHLIST = {
-    "3466.HK": "恒生高息股", "0941.HK": "中移動",
-    "0005.HK": "匯豐", "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ"
+    "3466.HK": "恒生高息股", "0941.HK": "中移動", "0005.HK": "匯豐", 
+    "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ",
+    "TSLA": "Tesla", "MSFT": "微軟"
 }
 
-HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "毒品", "販毒", "搶劫", "劫案", "開火", "封鎖", "現場", "衝擊", "搜索", "查獲", "檢獲", "搗破", "瓦解", "通緝", "命案", "車禍", "受傷", "失蹤", "不治", "命危", "昏迷"]
+HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "毒品", "販毒", "搶劫", "開火", "封鎖", "搜索", "查獲", "檢獲", "搗破", "瓦解", "通緝", "命案", "車禍", "失蹤", "不治", "命危", "昏迷"]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員"]
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "thestandard.com.hk", "wenweipo.com", "takungpao.com.hk", "stheadline.com", "orientaldaily.on.cc", "hket.com", "bastillepost.com", "am730.com.hk", "metrohk.com.hk", "news.tvb.com", "cabletv.com.hk", "now.com", "rthk.hk", "aastocks.com", "etnet.com.hk"]
+HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "thestandard.com.hk", "wenweipo.com", "takungpao.com.hk", "stheadline.com", "orientaldaily.on.cc", "hket.com", "am730.com.hk", "news.tvb.com", "now.com", "rthk.hk"]
 
-# 包含 100+ 冷門黑點、跳海熱點及橋樑
-HK_STRONG_INDICATORS = [
-    "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭", "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣", "石澳", "淺水灣", "赤柱",
-    "青馬大橋", "汀九橋", "昂船洲大橋", "汲水門大橋", "將軍澳跨灣大橋", "深港西部通道", "港珠澳大橋", "汀九", "青馬",
-    "白虎山", "香園圍", "瓦窰", "松園下", "伯公坳", "沙頭角", "塘肚村", "山咀", "白石凹", "落馬洲", "大埔田", "山雞乙", "打鼓嶺", "梧桐山", "料壆", "Liu Pok", "蓮麻坑", "羅湖", "沙嶺", "較寮村", "簡頭圍", "鳳園", "信義新村", "老鼠嶺", "木湖", "石湖圍", "梅子林", "蛤塘", "馬草壟", "禾徑山", "白鶴洲", "蠔殼山", "鰲磡石", "下白泥", "上白泥", "白泥", "流浮山", "尖鼻咀", "龍鼓灘",
-    "大蛇灣", "淡水灣", "大萬丈布", "長咀", "灣仔半島", "大灘", "深涌", "荔枝莊", "白沙洲", "罾棚角咀", "娥眉洲", "往灣洲", "破邊洲", "神仙井", "大浪頭", "蛇尖", "東灣山", "蚺蛇尖", "響螺角", "企嶺下海", "烏頭", "井頭", "大王爺頭", "黃石碼頭", "大癩痢", "小癩痢", "白沙澳", "下洋", "東平洲", "斬頸洲", "磨筆頭", "赤洲", "長沙排", "深灣", "蛇徑", "赤徑", "火石洲", "果洲群島", "米粉頂", "短咀", "蚺蛇灣", "白臘仔", "木棉洞", "鎖羅盆", "谷埔", "鳳坑", "大鵬灣", "黃茅洲",
-    "大浪灣", "石壁", "牛牯塱", "大蠔灣", "下尾灣", "南丫島", "頭顱洲", "索罟群島", "草灣", "花坪", "籮箕灣", "水口", "老虎頭", "望東灣", "昂坪", "彌勒山", "長索", "陰澳", "大鴉洲", "小鴉洲", "石山", "圓角", "二澳", "狗嶺涌", "芝麻灣", "拾塱", "大浪村", "望渡坳", "煎魚灣", "萬丈布", "大小磨刀", "樟木頭", "圓洲", "深屈灣", "沙螺灣", "分流", "澄碧邨", "交椅洲", "小交椅洲", "周公島", "大澳", "坪洲", "長洲", "梅窩",
-    "佛堂門", "東龍洲", "清水灣", "小蠔灣", "藍地石礦場", "醉酒灣", "貨櫃碼頭", "將軍澳", "工業邨", "大赤沙", "魔鬼山", "油塘", "三家村", "曾咀", "西草灣", "寮肚", "油柑頭", "第38區", "第40區", "避風塘", "貨物裝卸區"
-]
+# 100+ 地圖聯動關鍵詞 (略, 確保保留與上次一致)
+HK_STRONG_INDICATORS = ["香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭", "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣", "石澳", "淺水灣", "赤柱", "青馬大橋", "汀九橋", "昂船洲大橋", "汲水門大橋", "將軍澳跨灣大橋", "深港西部通道", "港珠澳大橋", "汀九", "青馬", "白虎山", "香園圍", "瓦窰", "松園下", "伯公坳", "沙頭角", "塘肚村", "山咀", "白石凹", "落馬洲", "大埔田", "山雞乙", "打鼓嶺", "梧桐山", "料壆", "Liu Pok", "蓮麻坑", "羅湖", "沙嶺", "較寮村", "簡頭圍", "鳳園", "信義新村", "老鼠嶺", "木湖", "石湖圍", "梅子林", "蛤塘", "馬草壟", "禾徑山", "白鶴洲", "蠔殼山", "鰲磡石", "下白泥", "上白泥", "白泥", "流浮山", "尖鼻咀", "龍鼓灘", "大蛇灣", "淡水灣", "大萬丈布", "長咀", "灣仔半島", "大灘", "深涌", "荔枝莊", "白沙洲", "罾棚角咀", "娥眉洲", "往灣洲", "破邊洲", "神仙井", "大浪頭", "蛇尖", "東灣山", "蚺蛇尖", "響螺角", "企嶺下海", "烏頭", "井頭", "大王爺頭", "黃石碼頭", "大癩痢", "小癩痢", "白沙澳", "下洋", "東平洲", "斬頸洲", "磨筆頭", "赤洲", "長沙排", "深灣", "蛇徑", "赤徑", "火石洲", "果洲群島", "米粉頂", "短咀", "蚺蛇灣", "白臘仔", "木棉洞", "鎖羅盆", "谷埔", "鳳坑", "大鵬灣", "黃茅洲", "大浪灣", "石壁", "牛牯塱", "大蠔灣", "下尾灣", "南丫島", "頭顱洲", "索罟群島", "草灣", "花坪", "籮箕灣", "水口", "老虎頭", "望東灣", "昂坪", "彌勒山", "長索", "陰澳", "大鴉洲", "小鴉洲", "石山", "圓角", "二澳", "狗嶺涌", "芝麻灣", "拾塱", "大浪村", "望渡坳", "煎魚灣", "萬丈布", "大小磨刀", "樟木頭", "圓洲", "深屈灣", "沙螺灣", "分流", "澄碧邨", "交椅洲", "小交椅洲", "周公島", "大澳", "坪洲", "長洲", "梅窩", "佛堂門", "東龍洲", "清水灣", "小蠔灣", "藍地石礦場", "醉酒灣", "貨櫃碼頭", "將軍澳", "工業邨", "大赤沙", "魔鬼山", "油塘", "三家村", "曾咀", "西草灣", "寮肚", "油柑頭", "第38區", "第40區", "避風塘", "貨物裝卸區"]
 
-NOISE_EXCLUDE = ["年報", "招募", "推廣", "App", "課程", "演習", "比賽", "典禮", "講座", "展覽", "慶祝", "紀念", "心得", "分享", "投考", "委任", "晉升", "2房", "沽出", "地產", "警察隊員佐級協會", "警察儲蓄互助社", "遮仔會", "就職", "儀式"]
+NOISE_EXCLUDE = ["年報", "招募", "推廣", "App", "課程", "演習", "比賽", "典禮", "講座", "展覽", "慶祝", "紀念", "心得", "分享", "投考", "委任", "晉升", "地產", "就職"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "新疆", "西藏", "法新社", "路透社"]
 
 # ==================== 2. 功能模塊 ====================
@@ -52,14 +47,59 @@ def get_map_url(title):
 
 def get_market_indices():
     res = {"VIX": 0.0, "VHSI": 0.0}
-    try:
-        res["VIX"] = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-    except: pass
-    try:
-        df = ak.index_vhsi()
-        col = ('close' if 'close' in df.columns else '收盤價' if '收盤價' in df.columns else df.columns[-1])
-        res["VHSI"] = df[col].iloc[-1]
-    except: pass
+    
+    # --- VIX 獲取 ---
+    for _ in range(3):
+        try:
+            v_val = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+            if v_val > 0:
+                res["VIX"] = v_val
+                break
+        except: time.sleep(1)
+
+    # --- VHSI 獲取 (三重路徑備援方案) ---
+    # 方案 1: akshare
+    for attempt in range(3):
+        try:
+            df = ak.index_vhsi()
+            if not df.empty:
+                col = next((c for c in ['close', '收盤價', '收盘价', 'Close'] if c in df.columns), df.columns[-1])
+                val = df[col].iloc[-1]
+                if val > 0:
+                    res["VHSI"] = val
+                    print(f"[VHSI] akshare 成功: {val:.2f}"); break
+            time.sleep(2)
+        except: time.sleep(2)
+
+    # 方案 2: Investing.com 爬蟲 (如果 akshare 失敗)
+    if res["VHSI"] == 0.0:
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            url = "https://www.investing.com/indices/hsbc-vhsi"
+            resp = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            price_elem = soup.find('div', {'data-test': 'instrument-price-last'})
+            if price_elem:
+                val = float(price_elem.text.strip().replace(',', ''))
+                if val > 0:
+                    res["VHSI"] = val
+                    print(f"[VHSI] Investing.com 成功: {val:.2f}")
+        except: pass
+
+    # 方案 3: AAStocks 爬蟲 (最後防線)
+    if res["VHSI"] == 0.0:
+        try:
+            url = "https://www.aastocks.com/tc/stocks/quote/index.aspx?symbol=VHSI"
+            resp = requests.get(url, timeout=10)
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            price_span = soup.find('span', {'class': 'last'})
+            if price_span:
+                val = float(price_span.text.strip())
+                if val > 0:
+                    res["VHSI"] = val
+                    print(f"[VHSI] AAStocks 成功: {val:.2f}")
+        except: pass
+
     return res
 
 def get_kdj_data(ticker, interval):
@@ -107,6 +147,7 @@ def load_history(file_path):
                     ts_str, content = line.split("||", 1)
                     if now - datetime.fromisoformat(ts_str) <= timedelta(days=MAX_HISTORY_DAYS):
                         valid.append(content)
+                else: valid.append(line)
     except: pass
     return valid[-300:]
 
@@ -168,8 +209,7 @@ def fetch_news_engine(mode, title_history, link_history):
 # ==================== 4. 運行主邏輯 ====================
 
 def run_monitor():
-    hk_tz = timezone(timedelta(hours=8))
-    now = datetime.now(hk_tz)
+    hk_tz = timezone(timedelta(hours=8)); now = datetime.now(hk_tz)
     t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
 
     m_news, m_t, m_l = fetch_news_engine("MARITIME", t_hist, l_hist)
@@ -178,12 +218,11 @@ def run_monitor():
 
     w_news = []
     is_sleep_time = (now.hour >= 23 or now.hour < 8)
-    for i, news in enumerate(w_n_raw):
+    for news in w_n_raw:
         if is_sleep_time:
             if any(k in news for k in ["核", "爆發", "緊急", "開火"]): w_news.append(news)
         else: w_news.append(news)
 
-    # ✅ 早上 8 點綜合報告 (修正補回 VIX/VHSI/KDJ)
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
