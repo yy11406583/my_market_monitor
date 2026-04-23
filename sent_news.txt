@@ -1315,3 +1315,8 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-04-23T17:30:41.831751+08:00||Tesla Shares Turn to Premarket Loss on Capital Spending Concerns -- Market Talk
 2026-04-23T17:30:41.831751+08:00||微軟聯手Anthropic獵殺零日漏洞！引進Claude Mythos模型強化防禦
 2026-04-23T17:30:41.831751+08:00||微軟計劃在2029年前在澳大利亞投資於人工智能和雲計算 $180億
+2026-04-23T18:00:44.502545+08:00||微軟宣佈在澳大利亞投資180億美元，擴大人工智能佈局
+2026-04-23T18:00:44.502545+08:00||These Stocks Are Today's Movers: Tesla, ServiceNow, IBM, Lam Research, and More -- Barrons.com
+2026-04-23T18:00:44.502545+08:00||市場傳聞：微軟曾考慮收購人工智能編程初創公司Cursor
+2026-04-23T18:00:44.502545+08:00||These Stocks Are Today's Movers: Tesla, ServiceNow, IBM, Lam Research, and More -- Barrons.com
+2026-04-23T18:00:44.502545+08:00||微軟整合 Anthropic Mythos 進安全開發流程，以強化資安能力
