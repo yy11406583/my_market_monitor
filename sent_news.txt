@@ -1338,3 +1338,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-04-23T23:01:35.620091+08:00||美股異動 | AI應用軟件股集體下跌 微軟(MSFT.US)跌超3% 作者 智通財經
 2026-04-23T23:01:35.620091+08:00||*恆指匯豐八九牛６(RC) (60918) 暫停買賣，停牌前股價為港幣$0.0
 2026-04-23T23:01:35.620091+08:00||These Stocks Are Today's Movers: Tesla, ServiceNow, QuantumScape, United Rentals, Texas Instruments, Lam Research, and More -- Barrons.com
+2026-04-23T23:30:42.525856+08:00||美股｜道指早段曾跌逾200點 Tesla微軟跌逾3%
