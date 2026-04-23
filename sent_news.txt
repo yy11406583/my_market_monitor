@@ -1330,3 +1330,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-04-23T20:09:42.996176+08:00||Guggenheim維持微軟(MSFT.US)買入評級，維持目標價586美元
 2026-04-23T20:30:35.089928+08:00||RBC Trims Price Target on Tesla to $475 From $480, Keeps Outperform Rating
 2026-04-23T21:00:45.660941+08:00||景顺QQQ(03455.HK)涨0.59%，报5115.000港元
+2026-04-23T21:30:39.844690+08:00||HSBC Adjusts Tesla Price Target to $123 From $127, Maintains Reduce Rating
+2026-04-23T21:30:39.844690+08:00||台灣CEO最焦慮：我能相信AI嗎？獨家專訪微軟開源女王：放手才能創造自由
