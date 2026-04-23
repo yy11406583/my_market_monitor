@@ -1302,3 +1302,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-04-23T15:14:34.482784+08:00||Dow Jones Top Company Headlines at 3 AM ET: Tesla Surprises Wall Street With Better Profits, $1.4 Billion in Free Cash Flow | SK ...
 2026-04-23T15:14:34.482784+08:00||微軟下調 Xbox Game Pass 訂閱價格，《使命召喚》新作不再首發入庫
 2026-04-23T15:14:34.482784+08:00||英國法院允許微軟雲服務訴訟繼續推進
+2026-04-23T15:30:35.501175+08:00||Tesla Earnings: What Investors Are Watching -- WSJ
+2026-04-23T15:30:35.501175+08:00||Tesla 2025銷售不如預期 傳將在印度市場推出Model Y L
