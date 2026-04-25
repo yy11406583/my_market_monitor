@@ -16,12 +16,14 @@ HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
 MAX_HISTORY_DAYS = 7
 
+# 已移除中移動
 WATCHLIST = {
-    "3466.HK": "恒生高息股", "0941.HK": "中移動", "0005.HK": "匯豐",
+    "3466.HK": "恒生高息股", "0005.HK": "匯豐",
     "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ",
     "TSLA": "Tesla", "MSFT": "微軟"
 }
 
+# 戰爭新聞來源白名單
 WAR_TRUSTED_SOURCES = [
     "reuters.com", "bloomberg.com", "bbc.com", "cnn.com", "wsj.com", "nytimes.com", 
     "apnews.com", "aljazeera.com", "ft.com", "hk01.com", "news.now.com", "rthk.hk", 
@@ -29,13 +31,17 @@ WAR_TRUSTED_SOURCES = [
     "am730.com.hk", "scmp.com", "cabletv.com.hk"
 ]
 
+# 噪音過濾
 WAR_NOISE_EXCLUDE = ["分析", "評論", "網評", "觀點", "專家", "學者", "專欄", "社評", "社論", "解讀", "啟示", "警示"]
 HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "開火", "封鎖", "扣押", "通緝", "命案", "車禍", "昏迷", "不治"]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員"]
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-# 完整地名庫 (200+ 完整名單已保留)
+# [新增] 外地詞排除：防止混入非本地新聞
+GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台灣", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
+
+# 完整地名庫 (保留 200+ 完整名單，用於地圖聯動)
 HK_STRONG_INDICATORS = [
     "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭",
     "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣",
@@ -128,7 +134,6 @@ def fetch_news_engine(mode, title_history, link_history):
         sites = " OR ".join([f"site:{d}" for d in HK_MEDIA_DOMAINS])
         query = f"({base}) AND ({sites})"
     elif mode == "WAR":
-        # 方案 B：移除查詢中的 site: 限制，改用後過濾以提高穩定性
         query = " OR ".join([f'"{k}"' for k in WAR_KEYWORDS])
     else:
         query = " OR ".join(WATCHLIST.values())
@@ -151,14 +156,14 @@ def fetch_news_engine(mode, title_history, link_history):
 
             valid = False
             if mode == "MARITIME":
-                if any(hk in title for hk in HK_STRONG_INDICATORS):
-                    if any(pk in title for pk in POLICE_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
-                        valid = True
+                # [增量修改] 移除地名強制限制，改為排除外國詞 + 動作詞過濾
+                if any(gx in title for gx in GLOBAL_EXCLUDE): 
+                    continue
+                if any(pk in title for pk in POLICE_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
+                    valid = True
             elif mode == "WAR":
-                # 後過濾機制：確保鏈接來自權威源且不含分析噪音
                 if any(src in link for src in WAR_TRUSTED_SOURCES):
                     if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
-                        # 確保標題真的提及關鍵字
                         if any(wk in title for wk in WAR_KEYWORDS):
                             valid = True
             elif mode == "FINANCE":
@@ -203,7 +208,6 @@ def run_monitor():
             elif wk_k < 20: status = " 📈 週線超賣"
             elif wk_k > 80: status = " 📉 週線超買"
             
-            # 恢復價格數據顯示
             report.append(f"• {name}: <b>{price_val:.2f}</b> | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
         
         if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
