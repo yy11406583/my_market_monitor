@@ -8,22 +8,31 @@ from email.utils import parsedate_to_datetime
 from bs4 import BeautifulSoup
 import urllib.parse
 from difflib import SequenceMatcher
+import xml.etree.ElementTree as ET
 
 # ==================== 1. 配置區 ====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
+RTHK_HISTORY_FILE = "sent_rthk_links.txt"
 MAX_HISTORY_DAYS = 7
 
-# 已移除中移動
+RTHK_RSS_URL = "https://news.rthk.hk/rthk/ch/rss/local.xml"
+
 WATCHLIST = {
     "3466.HK": "恒生高息股", "0005.HK": "匯豐",
     "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ",
     "TSLA": "Tesla", "MSFT": "微軟"
 }
 
-# 戰爭新聞來源白名單
+# 核心關鍵字 (適用於所有源，但受 HK_MEDIA_DOMAINS 限制)
+URGENT_KEYWORDS = ["水警", "命案", "劫案", "走私", "開火", "拘捕", "偵破", "不治", "通緝"]
+
+NOISE_EXCLUDE = ["年報", "招募", "推廣", "App", "課程", "演習", "比賽", "典禮", "講座", "展覽", "慶祝",
+                 "心得", "分享", "投考", "委任", "晉升", "地產", "就職", "儀式",
+                 "警察隊員佐級協會", "警察儲蓄互助社", "遮仔會"]
+
 WAR_TRUSTED_SOURCES = [
     "reuters.com", "bloomberg.com", "bbc.com", "cnn.com", "wsj.com", "nytimes.com", 
     "apnews.com", "aljazeera.com", "ft.com", "hk01.com", "news.now.com", "rthk.hk", 
@@ -31,17 +40,16 @@ WAR_TRUSTED_SOURCES = [
     "am730.com.hk", "scmp.com", "cabletv.com.hk"
 ]
 
-# 噪音過濾
 WAR_NOISE_EXCLUDE = ["分析", "評論", "網評", "觀點", "專家", "學者", "專欄", "社評", "社論", "解讀", "啟示", "警示"]
 HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "開火", "封鎖", "扣押", "通緝", "命案", "車禍", "昏迷", "不治"]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員"]
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 
-# [新增] 外地詞排除：防止混入非本地新聞
-GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台灣", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
+# 關鍵過濾：防止 URGENT_KEYWORDS 抓到外地新聞
+GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
 
-# 完整地名庫 (保留 200+ 完整名單，用於地圖聯動)
+# 完整地名庫 (200+ 完整名單)
 HK_STRONG_INDICATORS = [
     "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭",
     "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣",
@@ -126,7 +134,38 @@ def save_history(file_path, items):
     with open(file_path, "a", encoding="utf-8") as f:
         for item in items: f.write(f"{now}||{item}\n")
 
-# ==================== 3. 新聞引擎 ====================
+# ==================== 3. 高速數據源：RTHK ====================
+
+def fetch_rthk_news(rthk_history):
+    found, cur_l, cur_t = [], [], []
+    try:
+        r = requests.get(RTHK_RSS_URL, timeout=10)
+        if r.status_code == 200:
+            root = ET.fromstring(r.content)
+            for item in root.iter('item'):
+                title = item.find('title').text.strip()
+                link = item.find('link').text.strip()
+                
+                if link in rthk_history: continue
+                if any(noise in title for noise in NOISE_EXCLUDE): continue
+                if any(gx in title for gx in GLOBAL_EXCLUDE): continue # RTHK 也要排除外地詞
+                
+                valid = False
+                if any(uk in title for uk in URGENT_KEYWORDS):
+                    valid = True
+                elif any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS):
+                    valid = True
+                
+                if valid:
+                    map_info = get_map_url(title)
+                    found.append(f"🚨 <b>速報: {title}</b>{map_info}\n🔗 <a href='{link}'>閱讀全文 (RTHK)</a>")
+                    cur_l.append(link)
+                    cur_t.append(title)
+                if len(found) >= 5: break
+    except: pass
+    return found, cur_l, cur_t
+
+# ==================== 4. 常規新聞引擎 (Google News) ====================
 
 def fetch_news_engine(mode, title_history, link_history):
     if mode == "MARITIME":
@@ -156,10 +195,10 @@ def fetch_news_engine(mode, title_history, link_history):
 
             valid = False
             if mode == "MARITIME":
-                # [增量修改] 移除地名強制限制，改為排除外國詞 + 動作詞過濾
-                if any(gx in title for gx in GLOBAL_EXCLUDE): 
-                    continue
-                if any(pk in title for pk in POLICE_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
+                if any(noise in title for noise in NOISE_EXCLUDE): continue
+                if any(gx in title for gx in GLOBAL_EXCLUDE): continue
+                # URGENT_KEYWORDS 適用於 Google 源，但受 HK_MEDIA_DOMAINS 的地理範圍保護
+                if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
                     valid = True
             elif mode == "WAR":
                 if any(src in link for src in WAR_TRUSTED_SOURCES):
@@ -178,52 +217,58 @@ def fetch_news_engine(mode, title_history, link_history):
     except: pass
     return found, cur_t, cur_l
 
-# ==================== 4. 執行與報告 ====================
+# ==================== 5. 執行與報告 ====================
 
 def run_monitor():
     hk_tz = timezone(timedelta(hours=8)); now = datetime.now(hk_tz)
     t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
+    rthk_hist = load_history(RTHK_HISTORY_FILE)
 
+    rthk_urgent, rl, rt = fetch_rthk_news(rthk_hist)
     m_news, mt, ml = fetch_news_engine("MARITIME", t_hist, l_hist)
     f_news, ft, fl = fetch_news_engine("FINANCE", t_hist, l_hist)
     w_news, wt, wl = fetch_news_engine("WAR", t_hist, l_hist)
+
+    # 交叉去重邏輯保留
+    final_m_news = rthk_urgent.copy()
+    for m_item, m_title in zip(m_news, mt):
+        if not is_duplicate_ai(m_title, rt):
+            final_m_news.append(m_item)
 
     if now.hour == 8 and now.minute < 30:
         v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
         report.append(f"• VIX: {v_idx['VIX']:.2f}\n")
         report.append("<b>【持倉 KDJ 預警】</b>")
-        
         for sym, name in WATCHLIST.items():
             price_val = 0.0
             try:
                 p_data = yf.Ticker(sym).history(period="1d")
                 if not p_data.empty: price_val = p_data['Close'].iloc[-1]
             except: pass
-            
             wk_k, mo_k = get_kdj_data(sym, "1wk"), get_kdj_data(sym, "1mo")
             status = ""
             if wk_k < 20 and mo_k < 20: status = " ⚠️ 極度超賣"
             elif wk_k > 80 and mo_k > 80: status = " 🔥 極度超買"
             elif wk_k < 20: status = " 📈 週線超賣"
             elif wk_k > 80: status = " 📉 週線超買"
-            
             report.append(f"• {name}: <b>{price_val:.2f}</b> | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
         
         if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
         if w_news: report.append(f"\n🌍 <b>戰爭實時：</b>\n" + "\n".join(w_news))
-        if m_news: report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(m_news))
+        if final_m_news: report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(final_m_news))
         
         requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                       data={"chat_id": CHAT_ID, "text": "\n".join(report), "parse_mode": "HTML", "disable_web_page_preview": "True"})
     else:
-        urgent = m_news + w_news
+        urgent = final_m_news + w_news
         if urgent:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                           data={"chat_id": CHAT_ID, "text": f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"})
 
     save_history(HISTORY_FILE, mt + wt + ft)
     save_history(LINK_HISTORY_FILE, ml + wl + fl)
+    save_history(RTHK_HISTORY_FILE, rl)
 
 if __name__ == "__main__":
     run_monitor()
