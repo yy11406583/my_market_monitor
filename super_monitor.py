@@ -26,7 +26,7 @@ WATCHLIST = {
     "TSLA": "Tesla", "MSFT": "微軟"
 }
 
-# 【核心功能：禁止精簡】一鍵即用的完整關鍵字清單
+# 【核心功能】完整關鍵字清單（含所有補齊字眼）
 URGENT_KEYWORDS = [
     "水警", "命案", "劫案", "走私", "開火", "拘捕", "偵破", "不治", "通緝",
     "警署", "警員", "警方", "警察", "警拘", "警搗", "警破", "警逮", "被捕",
@@ -56,20 +56,13 @@ WAR_TRUSTED_SOURCES = [
 ]
 
 WAR_NOISE_EXCLUDE = ["分析", "評論", "網評", "觀點", "專家", "學者", "專欄", "社評", "社論", "解讀", "啟示", "警示"]
-
-# 動作詞庫補強 (與 URGENT_KEYWORDS 同步)
-HARD_ACTIONS = [
-    "走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "救起", "開火", 
-    "封鎖", "扣押", "通緝", "命案", "車禍", "昏迷", "不治", "搜獲", "檢獲", "搗破", 
-    "偷渡", "虐待", "偷竊", "行劫", "截查", "傷人", "施襲", "醉駕", "改裝", "爆竊", "淋紅油", "收數"
-]
-
+HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "開火", "封鎖", "扣押", "通緝", "命案", "車禍", "昏迷", "不治", "搜獲", "檢獲", "搗破", "淋紅油", "爆竊"]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員", "警署", "警拘", "交通部", "重案組", "反黑組"]
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
 
-# 完整地名庫 (200+ 完整名單已保留)
+# 【核心資產】200+ 完整地名庫
 HK_STRONG_INDICATORS = [
     "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭",
     "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣",
@@ -154,7 +147,7 @@ def save_history(file_path, items):
     with open(file_path, "a", encoding="utf-8") as f:
         for item in items: f.write(f"{now}||{item}\n")
 
-# ==================== 3. 高速數據源：RTHK (全開監控) ====================
+# ==================== 3. 高速數據源：RTHK (關鍵字即出報) ====================
 
 def fetch_rthk_news(rthk_history):
     found, cur_l, cur_t = [], [], []
@@ -169,7 +162,7 @@ def fetch_rthk_news(rthk_history):
                 if link in rthk_history: continue
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
                 
-                # 只要命中豐富後的 URGENT_KEYWORDS 即推送
+                # 【RTHK 特供邏輯】只要標題出現關鍵字眼，無需地名驗證，即報
                 valid = False
                 if any(uk in title for uk in URGENT_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
                     valid = True
@@ -183,12 +176,11 @@ def fetch_rthk_news(rthk_history):
     except: pass
     return found, cur_l, cur_t
 
-# ==================== 4. 常規新聞引擎 (Google News) ====================
+# ==================== 4. 常規引擎：Google News (最嚴謹過濾) ====================
 
 def fetch_news_engine(mode, title_history, link_history):
     if mode == "MARITIME":
-        # Google News 查詢同步補強重要關鍵字
-        base = "水警 OR 警拘 OR 命案 OR 走私 OR 爆竊 OR 淋紅油 OR 太空油 OR 電子煙"
+        base = "水警 OR 警拘 OR 命案 OR 走私 OR 爆竊 OR 太空油 OR 電子煙"
         sites = " OR ".join([f"site:{d}" for d in HK_MEDIA_DOMAINS])
         query = f"({base}) AND ({sites})"
     elif mode == "WAR":
@@ -214,11 +206,14 @@ def fetch_news_engine(mode, title_history, link_history):
 
             valid = False
             if mode == "MARITIME":
+                # 【Google 嚴謹邏輯】噪音過濾 + 外地排除 + 必須含有地名庫地名 + 警察/動作詞
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
                 if any(gx in title for gx in GLOBAL_EXCLUDE): continue
-                # 滿足豐富後的關鍵字清單即視為有效本地新聞
-                if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
-                    valid = True
+                
+                # Google News 必須有明確地名且包含關鍵字才視為本地有效新聞
+                if any(hk in title for hk in HK_STRONG_INDICATORS):
+                    if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
+                        valid = True
             elif mode == "WAR":
                 if any(src in link for src in WAR_TRUSTED_SOURCES):
                     if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
@@ -243,12 +238,15 @@ def run_monitor():
     t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
     rthk_hist = load_history(RTHK_HISTORY_FILE)
 
+    # 1. 抓取 RTHK (高速、寬鬆過濾)
     rthk_urgent, rl, rt = fetch_rthk_news(rthk_hist)
+    
+    # 2. 抓取 Google News (常規、嚴謹過濾)
     m_news, mt, ml = fetch_news_engine("MARITIME", t_hist, l_hist)
     f_news, ft, fl = fetch_news_engine("FINANCE", t_hist, l_hist)
     w_news, wt, wl = fetch_news_engine("WAR", t_hist, l_hist)
 
-    # 跨源交叉去重
+    # 跨源去重
     final_m_news = rthk_urgent.copy()
     for m_item, m_title in zip(m_news, mt):
         if not is_duplicate_ai(m_title, rt):
