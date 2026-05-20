@@ -2376,3 +2376,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-05-20T16:30:42.052663+08:00||微軟破獲惡意軟體簽章服務平臺Fox Tempest
 2026-05-20T17:00:48.741896+08:00||車Cam直擊上水兩的士衝紅燈 警拘兩七旬男司機
 2026-05-20T17:00:48.741896+08:00||皇后像廣場花園局部圍封5年作工地 建行人隧道連接中環新海濱
+2026-05-20T17:30:42.386578+08:00||Tesla Has Abandoned the Model S and Mercedes Wants to Fill the High-End EV Void -- Barrons.com
+2026-05-20T17:30:42.386578+08:00||中研院在美控告微軟專利侵權，點名 Visual Studio IntelliSense、IntelliCode 輸入建議技術
