@@ -2449,3 +2449,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-05-22T04:46:20.170773+08:00||Why Tesla Stock Is Up After the SpaceX IPO Filing
 2026-05-22T05:00:46.930537+08:00||VOO ETF Gains 0.2%
 2026-05-22T07:53:09.610727+08:00||雷軍︰小米汽車銷售與Tesla仍有差距
+2026-05-22T08:00:48.597099+08:00||微軟 DirectX ASD 技術正式支援 AMD 顯卡！XBOX PC 玩家遊戲載入 90 秒變 4 秒
