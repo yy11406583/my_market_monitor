@@ -2701,3 +2701,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-05-29T18:38:35.069652+08:00||Tesla的FSD安全神話破裂？自家人工智慧訓練師不信任該技術及其安全資料
 2026-05-29T19:00:49.219315+08:00||微軟、亞馬遜拚核能 OpenAI多方下注 AI搶電帶動綠電革新 | TVBS
 2026-05-29T19:00:49.219315+08:00||Market Chatter: Tesla Strike in Sweden Partially Scaled Back by IF Metall
+2026-05-29T20:00:51.697436+08:00||Volvo擴大使用Tesla超充站，台灣可能跟進改NACS充電規格？
