@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 import urllib.parse
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor # 【增量修改】引入多線程庫
 
 # ==================== 1. 配置區 ====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -159,11 +160,9 @@ def is_old_news_url(url):
             return True
     return False
 
-# 【增量修改】針對無日期特徵網址（如 TVB）的網頁內容時間特徵深度解析函數
 def is_old_html_content(url):
     try:
-        # 下載網頁 HTML，設定 5 秒超時避免阻塞
-        res = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        res = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"}) # 縮短超時時間至4秒
         if res.status_code != 200: return False
         
         soup = BeautifulSoup(res.content, 'html.parser')
@@ -171,23 +170,17 @@ def is_old_html_content(url):
         current_year = str(hk_now.year)
         current_month_2d = f"{hk_now.month:02d}"
 
-        # 1. 掃描標準 SEO 時間標籤
-        meta_tags = [
-            "article:published_time", "published_time", "og:published_time", 
-            "release_date", "meta_publish_date"
-        ]
+        meta_tags = ["article:published_time", "published_time", "og:published_time", "release_date", "meta_publish_date"]
         for tag in meta_tags:
             meta = soup.find("meta", property=tag) or soup.find("meta", attrs={"name": tag})
             if meta and meta.get("content"):
-                content = meta["content"] # 例如 "2026-01-15T12:00:00Z"
+                content = meta["content"]
                 date_match = re.search(r'(\d{4})[-/](\d{2})[-/]\d{2}', content)
                 if date_match:
                     yr, mo = date_match.group(1), date_match.group(2)
-                    if yr != current_year or mo != current_month_2d:
-                        return True # 判定為舊聞
+                    if yr != current_year or mo != current_month_2d: return True
                     return False
 
-        # 2. 針對 TVB 新聞網頁的特殊時間類別解析
         tvb_time = soup.find(class_=re.compile("time|date|publish", re.I))
         if tvb_time:
             text = tvb_time.text.strip()
@@ -195,11 +188,62 @@ def is_old_html_content(url):
             if date_match:
                 yr = date_match.group(1)
                 mo = f"{int(date_match.group(2)):02d}"
-                if yr != current_year or mo != current_month_2d:
-                    return True
+                if yr != current_year or mo != current_month_2d: return True
     except:
         pass
     return False
+
+# 【增量修改】新增一個獨立的併發網頁檢查工作函數
+def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_now):
+    try:
+        title = item.title.text.split(' - ')[0].strip()
+        link = item.link.text
+        
+        actual_url = link
+        if "articles/" in link:
+            try:
+                actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
+            except: pass
+
+        if actual_url in link_history: return None
+        if is_old_news_url(actual_url): return None
+        
+        # 移至併發處理的第二層核查
+        if mode == "MARITIME" and is_old_html_content(actual_url): return None
+
+        try:
+            p_date_tag = item.pubDate
+            if p_date_tag:
+                p_date = parsedate_to_datetime(p_date_tag.text).astimezone(timezone(timedelta(hours=8)))
+                if hk_now - p_date > timedelta(hours=24): return None
+            else: return None
+        except: return None
+
+        if is_duplicate_ai(title, title_history + cur_t_list): return None
+
+        valid = False
+        if mode == "MARITIME":
+            if any(noise in title for noise in NOISE_EXCLUDE): return None
+            if any(gx in title for gx in GLOBAL_EXCLUDE): return None
+            if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
+                if any(hk in title for hk in HK_STRONG_INDICATORS):
+                    valid = True
+        elif mode == "WAR":
+            if any(src in actual_url for src in WAR_TRUSTED_SOURCES):
+                if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
+                    if any(wk in title for wk in WAR_KEYWORDS):
+                        valid = True
+        elif mode == "FINANCE":
+            if any(s in title for s in WATCHLIST.values()): valid = True
+
+        if valid:
+            emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
+            map_info = get_map_url(title) if mode == "MARITIME" else ""
+            msg = f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{actual_url}'>閱讀全文</a>"
+            return {"msg": msg, "title": title, "url": actual_url}
+    except:
+        pass
+    return None
 
 def load_history(file_path):
     if not os.path.exists(file_path): return []
@@ -258,7 +302,7 @@ def fetch_rthk_news(rthk_history):
     except: pass
     return found, cur_l, cur_t
 
-# ==================== 4. 常規引擎：Google News (最嚴謹過濾) ====================
+# ==================== 4. 常規引擎：Google News (多線程並行加速版) ====================
 
 def fetch_news_engine(mode, title_history, link_history):
     if mode == "MARITIME":
@@ -277,54 +321,25 @@ def fetch_news_engine(mode, title_history, link_history):
     try:
         r = requests.get(url, timeout=15)
         soup = BeautifulSoup(r.content, 'xml')
-        for item in soup.find_all('item'):
-            title = item.title.text.split(' - ')[0].strip()
-            link = item.link.text
+        items = soup.find_all('item')[:15] # 限制前 15 條進行併發檢查，兼顧效率與覆蓋率
+        
+        # 【增量修改】利用 ThreadPoolExecutor 開啟多線程並行下載，打破下載時間牆
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [
+                executor.submit(check_single_item, item, title_history, cur_t, link_history, mode, hk_now)
+                for item in items
+            ]
             
-            actual_url = link
-            if "articles/" in link:
-                try:
-                    actual_url = requests.head(link, timeout=2).headers.get('Location', link)
-                except: pass
-
-            if actual_url in link_history: continue
-            
-            # 【雙重時間攔截機制】
-            if is_old_news_url(actual_url): continue             # 第一層：網址特徵檢查
-            if mode == "MARITIME" and is_old_html_content(actual_url): continue # 第二層：內文 HTML 元數據實時解密核對 (精確解決 TVB Bug)
-
-            try:
-                p_date_tag = item.pubDate
-                if p_date_tag:
-                    p_date = parsedate_to_datetime(p_date_tag.text).astimezone(timezone(timedelta(hours=8)))
-                    if hk_now - p_date > timedelta(hours=24): continue
-                else: continue
-            except: continue
-
-            if is_duplicate_ai(title, title_history + cur_t): continue
-
-            valid = False
-            if mode == "MARITIME":
-                if any(noise in title for noise in NOISE_EXCLUDE): continue
-                if segregation_check := any(gx in title for gx in GLOBAL_EXCLUDE): continue
-                
-                if any(hk in title for hk in HK_STRONG_INDICATORS):
-                    if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
-                        valid = True
-            elif mode == "WAR":
-                if any(src in actual_url for src in WAR_TRUSTED_SOURCES):
-                    if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
-                        if any(wk in title for wk in WAR_KEYWORDS):
-                            valid = True
-            elif mode == "FINANCE":
-                if any(s in title for s in WATCHLIST.values()): valid = True
-
-            if valid:
-                emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
-                map_info = get_map_url(title) if mode == "MARITIME" else ""
-                found.append(f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{actual_url}'>閱讀全文</a>")
-                cur_t.append(title); cur_l.append(actual_url)
-            if len(found) >= 5: break
+            for future in futures:
+                res = future.result()
+                if res:
+                    # 進行最後的即時局部去重核對
+                    if not is_duplicate_ai(res["title"], title_history + cur_t):
+                        found.append(res["msg"])
+                        cur_t.append(res["title"])
+                        cur_l.append(res["url"])
+                if len(found) >= 5:
+                    break
     except: pass
     return found, cur_t, cur_l
 
