@@ -26,7 +26,6 @@ WATCHLIST = {
     "TSLA": "Tesla", "MSFT": "微軟"
 }
 
-# 【核心功能】完整關鍵字清單（含所有補齊字眼）
 URGENT_KEYWORDS = [
     "水警", "命案", "劫案", "走私", "開火", "拘捕", "偵破", "不治", "通緝",
     "警署", "警員", "警方", "警察", "警拘", "警搗", "警破", "警逮", "被捕",
@@ -62,7 +61,6 @@ HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com"
 WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
 
-# 【核心資產】200+ 完整地名庫
 HK_STRONG_INDICATORS = [
     "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭",
     "西九", "西九文化區", "中環碼頭", "灣仔碼頭", "北角碼頭", "西環碼頭", "觀塘海濱", "蝴蝶灣",
@@ -119,14 +117,35 @@ def get_market_indices():
     except: pass
     return res
 
+# 【增量修改】優化 KDJ 計算：引入容錯機制，解決上市時間短或數據斷層造成的 nan 問題
 def get_kdj_data(ticker, interval):
     try:
         df = yf.Ticker(ticker).history(period="2y", interval=interval)
-        low, high = df['Low'].rolling(9).min(), df['High'].rolling(9).max()
-        rsv = (df['Close'] - low) / (high - low) * 100
+        if df.empty or len(df) < 9: return 50.0
+        
+        # 資料清洗：先進行前向與後向填充，消除缺失值引起的 nan
+        df['Low'] = df['Low'].ffill().bfill()
+        df['High'] = df['High'].ffill().bfill()
+        df['Close'] = df['Close'].ffill().bfill()
+
+        low = df['Low'].rolling(9).min()
+        high = df['High'].rolling(9).max()
+        
+        # 防止分母為 0
+        denom = high - low
+        denom = denom.replace(0, 1)
+        
+        rsv = (df['Close'] - low) / denom * 100
+        rsv = rsv.ffill().bfill().fillna(50.0) # 確保 RSV 沒有 nan
+        
         k = rsv.ewm(com=2, adjust=False).mean()
-        return k.iloc[-1]
-    except: return 50.0
+        val = k.iloc[-1]
+        
+        import math
+        if math.isnan(val): return 50.0
+        return val
+    except: 
+        return 50.0
 
 def load_history(file_path):
     if not os.path.exists(file_path): return []
@@ -151,6 +170,7 @@ def save_history(file_path, items):
 
 def fetch_rthk_news(rthk_history):
     found, cur_l, cur_t = [], [], []
+    hk_now = datetime.now(timezone(timedelta(hours=8)))
     try:
         r = requests.get(RTHK_RSS_URL, timeout=10)
         if r.status_code == 200:
@@ -162,7 +182,15 @@ def fetch_rthk_news(rthk_history):
                 if link in rthk_history: continue
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
                 
-                # 【RTHK 特供邏輯】只要標題出現關鍵字眼，無需地名驗證，即報
+                # 【增量修改】RTHK 嚴格時間防線：解析失敗或超過 24 小時的舊聞一概丟棄
+                try:
+                    p_date_tag = item.find('pubDate')
+                    if p_date_tag is not None:
+                        p_date = parsedate_to_datetime(p_date_tag.text).astimezone(timezone(timedelta(hours=8)))
+                        if hk_now - p_date > timedelta(hours=24): continue
+                    else: continue
+                except: continue
+
                 valid = False
                 if any(uk in title for uk in URGENT_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
                     valid = True
@@ -200,17 +228,22 @@ def fetch_news_engine(mode, title_history, link_history):
             link = item.link.text
             if link in link_history: continue
             
-            p_date = parsedate_to_datetime(item.pubDate.text).astimezone(timezone(timedelta(hours=8)))
-            if hk_now - p_date > timedelta(hours=24): continue
+            # 【增量修改】Google 嚴格時間防線：解析失敗或超過 24 小時的舊聞直接攔截
+            try:
+                p_date_tag = item.pubDate
+                if p_date_tag:
+                    p_date = parsedate_to_datetime(p_date_tag.text).astimezone(timezone(timedelta(hours=8)))
+                    if hk_now - p_date > timedelta(hours=24): continue
+                else: continue
+            except: continue
+
             if is_duplicate_ai(title, title_history + cur_t): continue
 
             valid = False
             if mode == "MARITIME":
-                # 【Google 嚴謹邏輯】噪音過濾 + 外地排除 + 必須含有地名庫地名 + 警察/動作詞
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
                 if any(gx in title for gx in GLOBAL_EXCLUDE): continue
                 
-                # Google News 必須有明確地名且包含關鍵字才視為本地有效新聞
                 if any(hk in title for hk in HK_STRONG_INDICATORS):
                     if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
                         valid = True
@@ -238,15 +271,11 @@ def run_monitor():
     t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
     rthk_hist = load_history(RTHK_HISTORY_FILE)
 
-    # 1. 抓取 RTHK (高速、寬鬆過濾)
     rthk_urgent, rl, rt = fetch_rthk_news(rthk_hist)
-    
-    # 2. 抓取 Google News (常規、嚴謹過濾)
     m_news, mt, ml = fetch_news_engine("MARITIME", t_hist, l_hist)
     f_news, ft, fl = fetch_news_engine("FINANCE", t_hist, l_hist)
     w_news, wt, wl = fetch_news_engine("WAR", t_hist, l_hist)
 
-    # 跨源去重
     final_m_news = rthk_urgent.copy()
     for m_item, m_title in zip(m_news, mt):
         if not is_duplicate_ai(m_title, rt):
