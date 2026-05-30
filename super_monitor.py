@@ -49,7 +49,7 @@ NOISE_EXCLUDE = ["年報", "招募", "推廣", "App", "課程", "演習", "比�
 
 WAR_TRUSTED_SOURCES = [
     "reuters.com", "bloomberg.com", "bbc.com", "cnn.com", "wsj.com", "nytimes.com", 
-    "apnews.com", "aljazeera.com", "ft.com", "hk01.com", "news.now.com", "rthk.hk", 
+    "apnews.com", "aljazeera.com", "ft.com", "hk01.com", "news.tvb.com", "rthk.hk", 
     "news.tvb.com", "stheadline.com", "orientaldaily.on.cc", "wenweipo.com", "hket.com", 
     "am730.com.hk", "scmp.com", "cabletv.com.hk"
 ]
@@ -117,35 +117,89 @@ def get_market_indices():
     except: pass
     return res
 
-# 【增量修改】優化 KDJ 計算：引入容錯機制，解決上市時間短或數據斷層造成的 nan 問題
 def get_kdj_data(ticker, interval):
     try:
         df = yf.Ticker(ticker).history(period="2y", interval=interval)
         if df.empty or len(df) < 9: return 50.0
-        
-        # 資料清洗：先進行前向與後向填充，消除缺失值引起的 nan
         df['Low'] = df['Low'].ffill().bfill()
         df['High'] = df['High'].ffill().bfill()
         df['Close'] = df['Close'].ffill().bfill()
-
-        low = df['Low'].rolling(9).min()
-        high = df['High'].rolling(9).max()
-        
-        # 防止分母為 0
-        denom = high - low
-        denom = denom.replace(0, 1)
-        
+        low, high = df['Low'].rolling(9).min(), df['High'].rolling(9).max()
+        denom = (high - low).replace(0, 1)
         rsv = (df['Close'] - low) / denom * 100
-        rsv = rsv.ffill().bfill().fillna(50.0) # 確保 RSV 沒有 nan
-        
+        rsv = rsv.ffill().bfill().fillna(50.0)
         k = rsv.ewm(com=2, adjust=False).mean()
         val = k.iloc[-1]
-        
         import math
-        if math.isnan(val): return 50.0
-        return val
-    except: 
-        return 50.0
+        return 50.0 if math.isnan(val) else val
+    except: return 50.0
+
+def is_old_news_url(url):
+    hk_now = datetime.now(timezone(timedelta(hours=8)))
+    current_year = str(hk_now.year)
+    current_month_2d = f"{hk_now.month:02d}"
+    
+    date_blocks = re.findall(r'\d{4,8}', url)
+    for block in date_blocks:
+        if len(block) == 4:
+            if block != current_year and block in ["2022", "2023", "2024", "2025"]:
+                return True
+        elif len(block) >= 6:
+            if block.startswith(("2022", "2023", "2024", "2025")):
+                return True
+            if block.startswith(current_year):
+                month_part = block[4:6]
+                if month_part.isdigit() and month_part != current_month_2d and month_part < current_month_2d:
+                    return True
+                    
+    slash_date = re.search(r'/(\d{4})-(\d{2})-\d{2}/', url)
+    if slash_date:
+        yr, mo = slash_date.group(1), slash_date.group(2)
+        if yr != current_year or mo != current_month_2d:
+            return True
+    return False
+
+# 【增量修改】針對無日期特徵網址（如 TVB）的網頁內容時間特徵深度解析函數
+def is_old_html_content(url):
+    try:
+        # 下載網頁 HTML，設定 5 秒超時避免阻塞
+        res = requests.get(url, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        if res.status_code != 200: return False
+        
+        soup = BeautifulSoup(res.content, 'html.parser')
+        hk_now = datetime.now(timezone(timedelta(hours=8)))
+        current_year = str(hk_now.year)
+        current_month_2d = f"{hk_now.month:02d}"
+
+        # 1. 掃描標準 SEO 時間標籤
+        meta_tags = [
+            "article:published_time", "published_time", "og:published_time", 
+            "release_date", "meta_publish_date"
+        ]
+        for tag in meta_tags:
+            meta = soup.find("meta", property=tag) or soup.find("meta", attrs={"name": tag})
+            if meta and meta.get("content"):
+                content = meta["content"] # 例如 "2026-01-15T12:00:00Z"
+                date_match = re.search(r'(\d{4})[-/](\d{2})[-/]\d{2}', content)
+                if date_match:
+                    yr, mo = date_match.group(1), date_match.group(2)
+                    if yr != current_year or mo != current_month_2d:
+                        return True # 判定為舊聞
+                    return False
+
+        # 2. 針對 TVB 新聞網頁的特殊時間類別解析
+        tvb_time = soup.find(class_=re.compile("time|date|publish", re.I))
+        if tvb_time:
+            text = tvb_time.text.strip()
+            date_match = re.search(r'(\d{4})[-/年](\d{1,2})[-/月]', text)
+            if date_match:
+                yr = date_match.group(1)
+                mo = f"{int(date_match.group(2)):02d}"
+                if yr != current_year or mo != current_month_2d:
+                    return True
+    except:
+        pass
+    return False
 
 def load_history(file_path):
     if not os.path.exists(file_path): return []
@@ -181,8 +235,8 @@ def fetch_rthk_news(rthk_history):
                 
                 if link in rthk_history: continue
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
-                
-                # 【增量修改】RTHK 嚴格時間防線：解析失敗或超過 24 小時的舊聞一概丟棄
+                if is_old_news_url(link): continue 
+
                 try:
                     p_date_tag = item.find('pubDate')
                     if p_date_tag is not None:
@@ -226,9 +280,19 @@ def fetch_news_engine(mode, title_history, link_history):
         for item in soup.find_all('item'):
             title = item.title.text.split(' - ')[0].strip()
             link = item.link.text
-            if link in link_history: continue
             
-            # 【增量修改】Google 嚴格時間防線：解析失敗或超過 24 小時的舊聞直接攔截
+            actual_url = link
+            if "articles/" in link:
+                try:
+                    actual_url = requests.head(link, timeout=2).headers.get('Location', link)
+                except: pass
+
+            if actual_url in link_history: continue
+            
+            # 【雙重時間攔截機制】
+            if is_old_news_url(actual_url): continue             # 第一層：網址特徵檢查
+            if mode == "MARITIME" and is_old_html_content(actual_url): continue # 第二層：內文 HTML 元數據實時解密核對 (精確解決 TVB Bug)
+
             try:
                 p_date_tag = item.pubDate
                 if p_date_tag:
@@ -242,13 +306,13 @@ def fetch_news_engine(mode, title_history, link_history):
             valid = False
             if mode == "MARITIME":
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
-                if any(gx in title for gx in GLOBAL_EXCLUDE): continue
+                if segregation_check := any(gx in title for gx in GLOBAL_EXCLUDE): continue
                 
                 if any(hk in title for hk in HK_STRONG_INDICATORS):
                     if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
                         valid = True
             elif mode == "WAR":
-                if any(src in link for src in WAR_TRUSTED_SOURCES):
+                if any(src in actual_url for src in WAR_TRUSTED_SOURCES):
                     if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
                         if any(wk in title for wk in WAR_KEYWORDS):
                             valid = True
@@ -258,8 +322,8 @@ def fetch_news_engine(mode, title_history, link_history):
             if valid:
                 emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
                 map_info = get_map_url(title) if mode == "MARITIME" else ""
-                found.append(f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{link}'>閱讀全文</a>")
-                cur_t.append(title); cur_l.append(link)
+                found.append(f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{actual_url}'>閱讀全文</a>")
+                cur_t.append(title); cur_l.append(actual_url)
             if len(found) >= 5: break
     except: pass
     return found, cur_t, cur_l
