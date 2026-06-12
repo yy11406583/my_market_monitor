@@ -3030,3 +3030,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-06-12T22:00:58.334633+08:00||匯豐銀行對陷困IFFCO集團敞口達4億美元 作者 Investing.com
 2026-06-12T22:30:53.335547+08:00||Tesla Shares Volatile Ahead of SpaceX Debut -- WSJ
 2026-06-12T23:30:51.338898+08:00||SpaceX 史上最大 IPO 上市：$135 訂價、估值 $1.77 兆超越 Tesla
+2026-06-13T00:11:39.343738+08:00||Tesla fell more than 2%
