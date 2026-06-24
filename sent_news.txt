@@ -3246,3 +3246,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-06-24T18:01:02.453756+08:00||微軟釋出Windows 11 26H2更新，但Windows 11 26H1由於核心不同不適用#Snapdragon X (249606)
 2026-06-24T20:01:00.585194+08:00||荔景邨夫婦命案｜78歲繼父用充電線上吊 留醫5日不治
 2026-06-24T20:01:00.585194+08:00||Tesla and Waymo Are Chasing the Robotaxi Dream
+2026-06-24T21:00:53.512687+08:00||Commvault與微軟達成戰略合作，服務將登陸Azure平台 作者 Investing.com
