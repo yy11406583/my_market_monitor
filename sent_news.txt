@@ -3252,3 +3252,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-06-24T22:01:09.148500+08:00||微軟 GitHub 多個開源專案遭駭客入侵，包含 Azure 與 AI 常用工具都被植入盜帳號木馬| T客邦
 2026-06-24T23:30:59.149493+08:00||Tesla and Waymo Duel in the Robotaxi Race
 2026-06-24T23:30:59.149493+08:00||Commvault股價因與微軟Azure建立戰略夥伴關係而大漲4.6% 作者 Investing.com
+2026-06-25T00:01:03.370112+08:00||Street Color: Tesla May Face US National Transportation Safety Board Probe Over Texas Crash, Bloomberg Reports
