@@ -3331,3 +3331,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-06-27T05:00:59.659760+08:00||納指100ETF-Invesco QQQ Trust期權聚焦：6月26日成交768.92萬張，未平倉合約為1,093.88萬張
 2026-06-27T07:01:01.889392+08:00||蘋果微軟全球加價　AI投資推升存儲價格
 2026-06-27T07:01:01.889392+08:00||Tesla and Waymo Duel in the Robotaxi Race
+2026-06-27T07:30:53.114873+08:00||Tesla and Waymo Duel in the Robotaxi Race
