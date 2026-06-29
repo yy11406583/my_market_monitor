@@ -3373,3 +3373,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-06-30T02:30:55.573387+08:00||Anthropic將Claude模型部署至微軟Azure，搭載NVIDIA GB300 GPU 作者 Investing.com
 2026-06-30T02:59:05.160204+08:00||內部人士警報 | 「大空頭」投資者Michael Burry做多微軟——押注到2028年股價將翻倍以上
 2026-06-30T02:59:05.160204+08:00||8GB DRAM售價35美元→300美元！專家：連蘋果微軟都受記憶體荒影響 小廠商更難了
+2026-06-30T04:01:02.843581+08:00||海關長洲以南截獲快艇 檢240公升走私電油
+2026-06-30T04:01:02.843581+08:00||Tesla Up Over 8%, on Pace for Largest Percent Increase Since April 2025 -- Data Talk
