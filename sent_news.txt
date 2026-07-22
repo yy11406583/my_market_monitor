@@ -3888,3 +3888,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-07-23T02:02:19.108503+08:00||電動車10萬公里實際檢測，Kia領先Tesla贏得電池壽命王
 2026-07-23T03:31:04.857842+08:00||繼微軟後三星也來了！擬砸 10 億歐元投資 Mistral，估值衝破 200 億歐元 | 科技新報
 2026-07-23T04:00:56.701176+08:00||Dow Up, Nasdaq Retreating in Final Hour Ahead of Tesla, Alphabet Earnings
+2026-07-23T05:00:53.296895+08:00||【TSLA業績】Tesla次季自由現金流轉負11億美元 AI投資推高資本開支 盤後跌約3%
+2026-07-23T05:00:53.296895+08:00||Press Release: Tesla Releases Second Quarter 2026 Financial Results
