@@ -3858,3 +3858,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-07-22T00:00:59.751475+08:00||美股入門｜怕SpaceX風險高 買Tesla得唔得？拆解投資3大潛力位
 2026-07-22T01:30:59.207787+08:00||Tesla Earnings Are on Deck, and Investors Will Be Looking to Settle This Major Debate
 2026-07-22T07:48:16.850510+08:00||用 AI 打敗 AI！微軟推 AI 守門員 MDASH，24 小時自動掃描 Windows 漏洞、 防堵零日攻擊
+2026-07-22T10:00:58.183654+08:00||台股盤前｜台股暴漲 1,783 點強攻，觀察今日補量與 Alphabet、Tesla 財報
+2026-07-22T10:00:58.183654+08:00||微軟評估導入陸AI模型Kimi K3
