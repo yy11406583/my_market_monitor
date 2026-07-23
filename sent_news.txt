@@ -3893,3 +3893,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-07-23T08:30:53.743405+08:00||Tesla上季自由現金流逾兩年來首次轉負
 2026-07-23T08:30:53.743405+08:00||Tesla上季純利倒退5%
 2026-07-23T09:00:58.409127+08:00||【美國】Tesla 2026Q2 電話會議：營收創高但獲利不如預期，AI、Robotaxi 與 Optimus 投資進入現金消耗期| 財經Ｍ平方短評
+2026-07-23T10:00:59.294549+08:00||Tesla Earnings: Cybercab Production, FSD Adoption Can't Keep Stock From Falling
