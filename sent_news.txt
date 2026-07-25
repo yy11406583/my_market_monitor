@@ -3949,3 +3949,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-07-25T03:01:00.256735+08:00||【環球金融快線】Tesla畀Optimus及Cybercab累？
 2026-07-25T03:01:00.256735+08:00||微軟(MSFT.US)、Meta(META.US)、亞馬遜(AMZN.US)財報下週來襲市場聚焦AI資本開支作者智通財經
 2026-07-25T03:30:54.211428+08:00||Tesla On Pace for Lowest Close Since August 2025 -- Data Talk
+2026-07-25T10:30:53.322029+08:00||黃仁勳第一次發推，就聯合微軟、Meta等企業給中國開源模型說好話
