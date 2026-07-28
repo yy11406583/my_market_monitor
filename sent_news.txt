@@ -4026,3 +4026,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-07-28T22:30:56.395919+08:00||Tesla will purchase the full 140 MWac capacity of the Lumen Farm solar power plant in Texas.
 2026-07-28T23:01:10.600403+08:00||恒生高息股(03466) 交易所買賣基金的交易資料
 2026-07-29T00:30:53.947093+08:00||Azure與Google Cloud服務遭指可越權操作，微軟與Google否認構成漏洞
+2026-07-29T01:01:07.634960+08:00||微軟新代理式安全系統 反制AI攻擊
