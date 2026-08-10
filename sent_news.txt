@@ -4291,3 +4291,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-08-10T16:01:00.104137+08:00||微軟Edge開始淘汰MV2擴充功能，一般用戶年底全面停用
 2026-08-10T17:01:03.326823+08:00||Market Chatter: Tesla to Expand Japan Sales Network With Four New Delivery Locations
 2026-08-10T17:01:03.326823+08:00||直擊警首次無人機捉連翔道交通違例 Tesla「Cut實線」遭鐵馬截停
+2026-08-10T18:00:58.678396+08:00||微軟將Windows OEM授權費調高7-10%，本季PC價格將再上漲5%
