@@ -4527,3 +4527,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-08-22T17:00:51.053890+08:00||Tesla Officially Announces: Cybercab Launch Event to Be Held in Austin on September 3
 2026-08-22T18:00:48.407131+08:00||Tesla下月3日舉行Cybercab發佈會 5個抽獎名額予粉絲參加
 2026-08-22T18:30:48.933938+08:00||緊急逃生隱患引爆歷史級安全風暴！Tesla 在華狂召近 300 萬部純電車
+2026-08-22T21:00:51.000602+08:00||微軟宣佈Windows 11 將徹底刪除25 年歷史的WMIC，指令查詢序號將走入歷史，改用PowerShell 接棒
