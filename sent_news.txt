@@ -5078,3 +5078,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-09-19T17:30:48.420110+08:00||OpenAI又爆異常行為 微軟示警「非常嚴重」：恐關閉不了
 2026-09-19T20:30:49.112894+08:00||$納指100ETF-Invesco QQQ Trust (QQQ.US)$ 組合更穩
 2026-09-19T20:30:49.112894+08:00||Invesco QQQ Income Advantage ETF To Go Ex-Dividend On September 21st, 2026 With 0.4859 USD Dividend Per Share
+2026-09-19T22:30:54.432557+08:00||Coinbase (COIN.US) 擬推美股永續合約，瞄準蘋果(AAPL.US)微軟 (MSFT.US)等巨頭作者智通財經
