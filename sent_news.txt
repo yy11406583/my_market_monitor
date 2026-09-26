@@ -5239,3 +5239,4 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-09-26T11:00:53.300085+08:00||$納指100ETF-Invesco QQQ Trust (QQQ.US)$ 無語了🤦
 2026-09-26T12:00:48.114121+08:00||微軟大改版Copilot「超級App」正式亮相：Home、Code、Autopilot三合一，Nadella親自對打Anthropic、OpenAI
 2026-09-26T12:30:52.667926+08:00||微軟升級Copilot攻企業客 直接嵌入Word、Excel及PowerPoint提升效率
+2026-09-26T13:00:53.495502+08:00||微軟拚命改造Windows討好開發者 結果有點兒尷尬
