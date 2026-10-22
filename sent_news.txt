@@ -5844,3 +5844,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-10-22T09:31:02.504061+08:00||Tesla季度營收零增長 經調整每股盈利跌4%勝預期
 2026-10-22T09:31:02.504061+08:00||Tesla第三季資本支出遠遜預期 轉型計劃面臨考驗 (09:17)
 2026-10-22T09:31:02.504061+08:00||【美國】Tesla 2026Q3 電話會議：毛利率和現金流改善，但 Robotaxi、Optimus 等新業務仍需大量資本投入
+2026-10-22T10:01:11.971667+08:00||Why Investors Should Be Skeptical of a Potential Tesla-SpaceX Merger
+2026-10-22T10:01:11.971667+08:00||Tesla aims to sell Cybercab robotaxis by end of year despite federal probe
