@@ -6335,3 +6335,5 @@ VOO 股票：為何 Vanguard 標普 500 ETF 仍是明智的長期投資之選
 2026-11-10T15:31:01.130311+08:00||商周-黃仁勳風波竟可能讓微軟、Google受惠！華爾街為何仍看好輝達？
 2026-11-10T16:01:04.036917+08:00||QQQ單日暴升3.54%成功守住上升趨勢，能否趁勢奪回200日均線關鍵位置？
 2026-11-10T17:01:12.704380+08:00||寫Prompt寫到心累？微軟聯手韓國開發出讓AI直接讀大腦訊號的技術， 出錯瞬間自己改到好
+2026-11-10T17:31:15.416327+08:00||加皇資本市場維持微軟(MSFT.US)買入評級，維持目標價640美元
+2026-11-10T17:31:15.416327+08:00||QQQ surged 3.54% in a single day, successfully holding its uptrend—can it now capitalize on the momentum to reclaim the crucial 200-day moving average?
