@@ -3,29 +3,40 @@ import requests
 import os
 import re
 import time
+import json
+import math
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from bs4 import BeautifulSoup
 import urllib.parse
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor # 【增量修改】引入多線程庫
+from concurrent.futures import ThreadPoolExecutor
 
-# ==================== 1. 配置區 ====================
+# ==================== 1. 配置区 ====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 HISTORY_FILE = "sent_news.txt"
 LINK_HISTORY_FILE = "sent_links.txt"
 RTHK_HISTORY_FILE = "sent_rthk_links.txt"
+ETF_CACHE_FILE = "etf_data_cache.json"
 MAX_HISTORY_DAYS = 7
 
 RTHK_RSS_URL = "https://news.rthk.hk/rthk/ch/rss/local.xml"
 
+# 已移除匯豐、建行、微軟；加入 3145
 WATCHLIST = {
-    "3466.HK": "恒生高息股", "0005.HK": "匯豐",
-    "0939.HK": "建行", "VOO": "VOO", "QQQ": "QQQ",
-    "TSLA": "Tesla", "MSFT": "微軟"
+    "3466.HK": "恒生高息股",
+    "3145.HK": "華夏亞洲高息股票ETF",
+    "VOO": "VOO",
+    "QQQ": "QQQ",
+    "TSLA": "Tesla",
 }
+
+# ETF 深度關注清單
+ETF_WATCH = ["3466.HK", "3145.HK"]
+ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息"]
+ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費"]
 
 URGENT_KEYWORDS = [
     "水警", "命案", "劫案", "走私", "開火", "拘捕", "偵破", "不治", "通緝",
@@ -48,18 +59,9 @@ NOISE_EXCLUDE = ["年報", "招募", "推廣", "App", "課程", "演習", "比�
                  "心得", "分享", "投考", "委任", "晉升", "地產", "就職", "儀式",
                  "警察隊員佐級協會", "警察儲蓄互助社", "遮仔會"]
 
-WAR_TRUSTED_SOURCES = [
-    "reuters.com", "bloomberg.com", "bbc.com", "cnn.com", "wsj.com", "nytimes.com", 
-    "apnews.com", "aljazeera.com", "ft.com", "hk01.com", "news.tvb.com", "rthk.hk", 
-    "news.tvb.com", "stheadline.com", "orientaldaily.on.cc", "wenweipo.com", "hket.com", 
-    "am730.com.hk", "scmp.com", "cabletv.com.hk"
-]
-
-WAR_NOISE_EXCLUDE = ["分析", "評論", "網評", "觀點", "專家", "學者", "專欄", "社評", "社論", "解讀", "啟示", "警示"]
 HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇溺", "漂浮", "浮屍", "救起", "開火", "封鎖", "扣押", "通緝", "命案", "車禍", "昏迷", "不治", "搜獲", "檢獲", "搗破", "淋紅油", "爆竊"]
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員", "警署", "警拘", "交通部", "重案組", "反黑組"]
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
-WAR_KEYWORDS = ["伊朗戰爭", "美以伊戰爭", "美伊戰爭", "以伊戰爭"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
 
 HK_STRONG_INDICATORS = [
@@ -88,7 +90,7 @@ HK_STRONG_INDICATORS = [
     "西草灣", "寮肚", "油柑頭", "第38區", "第40區", "避風塘", "貨物裝卸區"
 ]
 
-# ==================== 2. 輔助功能 ====================
+# ==================== 2. 辅助功能 ====================
 
 def normalize_title(title):
     title = re.sub(r"【.*?】|（.*?）", "", title)
@@ -110,14 +112,6 @@ def get_map_url(title):
             return f"\n📍 <a href='https://www.google.com/maps/search/{query}'>查看地點: {place}</a>"
     return ""
 
-def get_market_indices():
-    res = {"VIX": 0.0}
-    try:
-        v_val = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        res["VIX"] = v_val
-    except: pass
-    return res
-
 def get_kdj_data(ticker, interval):
     try:
         df = yf.Ticker(ticker).history(period="2y", interval=interval)
@@ -131,15 +125,14 @@ def get_kdj_data(ticker, interval):
         rsv = rsv.ffill().bfill().fillna(50.0)
         k = rsv.ewm(com=2, adjust=False).mean()
         val = k.iloc[-1]
-        import math
         return 50.0 if math.isnan(val) else val
-    except: return 50.0
+    except:
+        return 50.0
 
 def is_old_news_url(url):
     hk_now = datetime.now(timezone(timedelta(hours=8)))
     current_year = str(hk_now.year)
     current_month_2d = f"{hk_now.month:02d}"
-    
     date_blocks = re.findall(r'\d{4,8}', url)
     for block in date_blocks:
         if len(block) == 4:
@@ -152,7 +145,6 @@ def is_old_news_url(url):
                 month_part = block[4:6]
                 if month_part.isdigit() and month_part != current_month_2d and month_part < current_month_2d:
                     return True
-                    
     slash_date = re.search(r'/(\d{4})-(\d{2})-\d{2}/', url)
     if slash_date:
         yr, mo = slash_date.group(1), slash_date.group(2)
@@ -162,14 +154,12 @@ def is_old_news_url(url):
 
 def is_old_html_content(url):
     try:
-        res = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"}) # 縮短超時時間至4秒
+        res = requests.get(url, timeout=4, headers={"User-Agent": "Mozilla/5.0"})
         if res.status_code != 200: return False
-        
         soup = BeautifulSoup(res.content, 'html.parser')
         hk_now = datetime.now(timezone(timedelta(hours=8)))
         current_year = str(hk_now.year)
         current_month_2d = f"{hk_now.month:02d}"
-
         meta_tags = ["article:published_time", "published_time", "og:published_time", "release_date", "meta_publish_date"]
         for tag in meta_tags:
             meta = soup.find("meta", property=tag) or soup.find("meta", attrs={"name": tag})
@@ -180,7 +170,6 @@ def is_old_html_content(url):
                     yr, mo = date_match.group(1), date_match.group(2)
                     if yr != current_year or mo != current_month_2d: return True
                     return False
-
         tvb_time = soup.find(class_=re.compile("time|date|publish", re.I))
         if tvb_time:
             text = tvb_time.text.strip()
@@ -193,24 +182,18 @@ def is_old_html_content(url):
         pass
     return False
 
-# 【增量修改】新增一個獨立的併發網頁檢查工作函數
 def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_now):
     try:
         title = item.title.text.split(' - ')[0].strip()
         link = item.link.text
-        
         actual_url = link
         if "articles/" in link:
             try:
                 actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
             except: pass
-
         if actual_url in link_history: return None
         if is_old_news_url(actual_url): return None
-        
-        # 移至併發處理的第二層核查
         if mode == "MARITIME" and is_old_html_content(actual_url): return None
-
         try:
             p_date_tag = item.pubDate
             if p_date_tag:
@@ -218,9 +201,7 @@ def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_no
                 if hk_now - p_date > timedelta(hours=24): return None
             else: return None
         except: return None
-
         if is_duplicate_ai(title, title_history + cur_t_list): return None
-
         valid = False
         if mode == "MARITIME":
             if any(noise in title for noise in NOISE_EXCLUDE): return None
@@ -228,16 +209,10 @@ def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_no
             if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
                 if any(hk in title for hk in HK_STRONG_INDICATORS):
                     valid = True
-        elif mode == "WAR":
-            if any(src in actual_url for src in WAR_TRUSTED_SOURCES):
-                if not any(noise in title for noise in WAR_NOISE_EXCLUDE):
-                    if any(wk in title for wk in WAR_KEYWORDS):
-                        valid = True
         elif mode == "FINANCE":
             if any(s in title for s in WATCHLIST.values()): valid = True
-
         if valid:
-            emoji = "⚓️" if mode == "MARITIME" else "🌍" if mode == "WAR" else "💰"
+            emoji = "⚓️" if mode == "MARITIME" else "💰"
             map_info = get_map_url(title) if mode == "MARITIME" else ""
             msg = f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{actual_url}'>閱讀全文</a>"
             return {"msg": msg, "title": title, "url": actual_url}
@@ -264,7 +239,293 @@ def save_history(file_path, items):
     with open(file_path, "a", encoding="utf-8") as f:
         for item in items: f.write(f"{now}||{item}\n")
 
-# ==================== 3. 高速數據源：RTHK (關鍵字即出報) ====================
+# ==================== 3. ETF 自动抓取与比对模块 ====================
+
+def load_etf_cache():
+    if os.path.exists(ETF_CACHE_FILE):
+        try:
+            with open(ETF_CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_etf_cache(data):
+    try:
+        with open(ETF_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except:
+        pass
+
+def fetch_dividends(symbol):
+    """使用 yfinance 获取派息历史（最可靠的来源）"""
+    try:
+        ticker = yf.Ticker(symbol)
+        divs = ticker.dividends
+        if divs.empty:
+            return []
+        records = []
+        for date, amount in divs.items():
+            records.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "amount": round(float(amount), 4),
+            })
+        records.sort(key=lambda x: x["date"], reverse=True)
+        return records[:12]
+    except Exception as e:
+        print(f"[Dividends {symbol}] 失败: {e}")
+        return []
+
+def fetch_3466_holdings():
+    """抓取 3466 十大持仓（优先 AAStocks，备援 etnet）"""
+    holdings = []
+    # 尝试 AAStocks
+    try:
+        url = "http://www.aastocks.com/tc/stocks/etf/holdings.aspx?symbol=03466"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        tables = soup.find_all("table")
+        for table in tables:
+            if "比重" in table.text or "佔比" in table.text or "%" in table.text:
+                rows = table.find_all("tr")[1:]
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) >= 3:
+                        name = cols[0].text.strip()
+                        weight = cols[-1].text.strip()
+                        if name and "%" in weight:
+                            holdings.append({"name": name, "weight": weight})
+                    if len(holdings) >= 10:
+                        break
+                if holdings:
+                    break
+    except Exception as e:
+        print(f"[3466 Holdings AAStocks] {e}")
+
+    # 备援：etnet
+    if not holdings:
+        try:
+            url = "https://etf.etnet.com.hk/www/chi/stocks/realtime/quote_holdings.php?code=03466"
+            headers = {"User-Agent": "Mozilla/5.0"}
+            resp = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            tables = soup.find_all("table")
+            for table in tables:
+                if "%" in table.text:
+                    rows = table.find_all("tr")[1:]
+                    for row in rows:
+                        cols = row.find_all("td")
+                        if len(cols) >= 2:
+                            name = cols[0].text.strip()
+                            weight = cols[-1].text.strip()
+                            if name and "%" in weight:
+                                holdings.append({"name": name, "weight": weight})
+                        if len(holdings) >= 10:
+                            break
+                    if holdings:
+                        break
+        except Exception as e:
+            print(f"[3466 Holdings etnet] {e}")
+
+    return holdings[:10]
+
+def fetch_3145_data():
+    """抓取 3145 十大持仓、国家权重（来自 MoneyDJ）"""
+    result = {"holdings": [], "countries": []}
+    try:
+        url = "http://210.17.21.214/ETF/X/Basic/Basic0007.xdjhtm?etfid=3145.HK"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        tables = soup.find_all("table")
+
+        # 国家权重
+        for t in tables:
+            if "區域" in t.text and "比例" in t.text:
+                rows = t.find_all("tr")[1:]
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) >= 3:
+                        country = cols[0].text.strip()
+                        weight = cols[-1].text.strip()
+                        if country and "%" in weight:
+                            result["countries"].append({"country": country, "weight": weight})
+                break
+
+        # 十大持仓
+        for t in tables:
+            if "個股" in t.text or "持股" in t.text:
+                rows = t.find_all("tr")[1:]
+                for row in rows:
+                    cols = row.find_all("td")
+                    if len(cols) >= 2:
+                        name = cols[0].text.strip()
+                        weight = cols[1].text.strip()
+                        if name and "%" in weight:
+                            result["holdings"].append({"name": name, "weight": weight})
+                    if len(result["holdings"]) >= 10:
+                        break
+                if result["holdings"]:
+                    break
+    except Exception as e:
+        print(f"[3145 Holdings] {e}")
+
+    return result
+
+def guess_country_by_name(name):
+    """根据名称启发式判断国家"""
+    n = name.lower()
+    if any(k in n for k in ["印尼", "indonesia", "bbri", "bbni", "bmri", "antm", "bank rakyat", "bank negara", "bank mandiri", "aneka tambang"]):
+        return "印尼"
+    if any(k in n for k in ["台灣", "taiwan", "大聯大", "文曄", "phison", "mediatek", "tsmc", "台積"]):
+        return "台灣"
+    if any(k in n for k in ["中國", "china", "中遠", "中國宏橋", "中國建築", "老鋪", "復星", "華潤", "騰訊"]):
+        return "中國"
+    if any(k in n for k in ["香港", "hong kong", "hk"]):
+        return "香港"
+    if any(k in n for k in ["新加坡", "singapore", "dbs", "ocbc", "uob"]):
+        return "新加坡"
+    if any(k in n for k in ["韓國", "korea", "samsung", "sk hynix"]):
+        return "韓國"
+    if any(k in n for k in ["泰國", "thailand", "ptt", "kasikorn"]):
+        return "泰國"
+    if any(k in n for k in ["馬來西亞", "malaysia", "maybank"]):
+        return "馬來西亞"
+    if any(k in n for k in ["印度", "india", "reliance", "infosys"]):
+        return "印度"
+    if any(k in n for k in ["菲律賓", "philippines"]):
+        return "菲律賓"
+    return ""
+
+def build_etf_section():
+    """构建 3466 & 3145 的深度关注板块文本"""
+    cache = load_etf_cache()
+    lines = []
+    new_cache = dict(cache)
+
+    # --- 3466 ---
+    lines.append("<b>3466 恒生高息股</b>")
+
+    # 派息
+    divs_3466 = fetch_dividends("3466.HK")
+    curr_div_3466 = divs_3466[0] if divs_3466 else None
+    prev_div_3466 = cache.get("3466.HK", {}).get("latest")
+    if curr_div_3466:
+        div_line = f"  💰 最新派息：{curr_div_3466['amount']} (除息日 {curr_div_3466['date']})"
+        if prev_div_3466 and prev_div_3466.get("date") != curr_div_3466["date"]:
+            div_line += f"\n  🆕 新派息！上次為 {prev_div_3466['amount']} (除息日 {prev_div_3466['date']})"
+        elif prev_div_3466 and prev_div_3466.get("amount") != curr_div_3466["amount"]:
+            div_line += f"\n  ⚠️ 金額變動！上次為 {prev_div_3466['amount']}"
+        lines.append(div_line)
+    else:
+        lines.append("  💰 最新派息：數據獲取失敗")
+    new_cache["3466.HK"] = {"latest": curr_div_3466} if curr_div_3466 else new_cache.get("3466.HK", {})
+
+    # 十大持仓
+    holdings_3466 = fetch_3466_holdings()
+    if holdings_3466:
+        lines.append("  📊 十大持倉：")
+        for h in holdings_3466:
+            lines.append(f"    - {h['name']}: {h['weight']}")
+    else:
+        lines.append("  📊 十大持倉：數據獲取失敗")
+
+    # --- 3145 ---
+    lines.append("\n<b>3145 華夏亞洲高息股票ETF</b>")
+
+    # 派息
+    divs_3145 = fetch_dividends("3145.HK")
+    curr_div_3145 = divs_3145[0] if divs_3145 else None
+    prev_div_3145 = cache.get("3145.HK", {}).get("latest")
+    if curr_div_3145:
+        div_line = f"  💰 最新派息：{curr_div_3145['amount']} (除息日 {curr_div_3145['date']})"
+        if prev_div_3145 and prev_div_3145.get("date") != curr_div_3145["date"]:
+            div_line += f"\n  🆕 新派息！上次為 {prev_div_3145['amount']} (除息日 {prev_div_3145['date']})"
+        elif prev_div_3145 and prev_div_3145.get("amount") != curr_div_3145["amount"]:
+            div_line += f"\n  ⚠️ 金額變動！上次為 {prev_div_3145['amount']}"
+        lines.append(div_line)
+    else:
+        lines.append("  💰 最新派息：數據獲取失敗")
+    new_cache["3145.HK"] = {"latest": curr_div_3145} if curr_div_3145 else new_cache.get("3145.HK", {})
+
+    # 3145 十大持仓 + 国家
+    data_3145 = fetch_3145_data()
+    if data_3145["holdings"]:
+        lines.append("  📊 十大持倉（含國家）：")
+        for h in data_3145["holdings"]:
+            country = guess_country_by_name(h["name"])
+            tag = f" [{country}]" if country else ""
+            lines.append(f"    - {h['name']}{tag}: {h['weight']}")
+    else:
+        lines.append("  📊 十大持倉：數據獲取失敗")
+
+    # 国家权重
+    if data_3145["countries"]:
+        lines.append("  🌏 國家/區域權重：")
+        for c in data_3145["countries"][:5]:
+            lines.append(f"    - {c['country']}: {c['weight']}")
+
+    save_etf_cache(new_cache)
+    return "\n".join(lines)
+
+def fetch_etf_news(title_history, link_history):
+    """抓取 3466 与 3145 的相关消息（成份股/管理费/派息/政策等）"""
+    keywords_q = " OR ".join([f'"{k}"' for k in ETF_NEWS_KEYWORDS])
+    special_q = " OR ".join(ETF_SPECIAL_KEYWORDS)
+    base = f"({keywords_q}) AND ({special_q})"
+    sites = " OR ".join([f"site:{d}" for d in HK_MEDIA_DOMAINS])
+    query = f"({base}) AND ({sites})"
+
+    url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=zh-HK&gl=HK&ceid=HK:zh-Hant"
+    found, cur_t, cur_l = [], [], []
+    hk_now = datetime.now(timezone(timedelta(hours=8)))
+
+    try:
+        r = requests.get(url, timeout=15)
+        soup = BeautifulSoup(r.content, 'xml')
+        items = soup.find_all('item')[:10]
+
+        def check_etf_item(item):
+            try:
+                title = item.title.text.split(' - ')[0].strip()
+                link = item.link.text
+                actual_url = link
+                if "articles/" in link:
+                    try:
+                        actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
+                    except: pass
+                if actual_url in link_history: return None
+                if is_old_news_url(actual_url): return None
+                try:
+                    p_date = parsedate_to_datetime(item.pubDate.text).astimezone(timezone(timedelta(hours=8)))
+                    if hk_now - p_date > timedelta(hours=72): return None  # ETF新闻3天内
+                except: return None
+                if is_duplicate_ai(title, title_history + cur_t): return None
+                # 必须包含ETF代码或名称
+                if not any(k in title for k in ETF_NEWS_KEYWORDS): return None
+                msg = f"📢 <b>{title}</b>\n🔗 <a href='{actual_url}'>閱讀全文</a>"
+                return {"msg": msg, "title": title, "url": actual_url}
+            except:
+                return None
+
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [executor.submit(check_etf_item, item) for item in items]
+            for future in futures:
+                res = future.result()
+                if res:
+                    if not is_duplicate_ai(res["title"], title_history + cur_t):
+                        found.append(res["msg"])
+                        cur_t.append(res["title"])
+                        cur_l.append(res["url"])
+                if len(found) >= 3:
+                    break
+    except Exception as e:
+        print(f"[ETF News] {e}")
+
+    return found, cur_t, cur_l
+
+# ==================== 4. 高速数据源：RTHK ====================
 
 def fetch_rthk_news(rthk_history):
     found, cur_l, cur_t = [], [], []
@@ -276,11 +537,9 @@ def fetch_rthk_news(rthk_history):
             for item in root.iter('item'):
                 title = item.find('title').text.strip()
                 link = item.find('link').text.strip()
-                
                 if link in rthk_history: continue
                 if any(noise in title for noise in NOISE_EXCLUDE): continue
-                if is_old_news_url(link): continue 
-
+                if is_old_news_url(link): continue
                 try:
                     p_date_tag = item.find('pubDate')
                     if p_date_tag is not None:
@@ -288,11 +547,9 @@ def fetch_rthk_news(rthk_history):
                         if hk_now - p_date > timedelta(hours=24): continue
                     else: continue
                 except: continue
-
                 valid = False
                 if any(uk in title for uk in URGENT_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
                     valid = True
-                
                 if valid:
                     map_info = get_map_url(title)
                     found.append(f"🚨 <b>速報: {title}</b>{map_info}\n🔗 <a href='{link}'>閱讀全文 (RTHK)</a>")
@@ -302,15 +559,13 @@ def fetch_rthk_news(rthk_history):
     except: pass
     return found, cur_l, cur_t
 
-# ==================== 4. 常規引擎：Google News (多線程並行加速版) ====================
+# ==================== 5. 常规引擎：Google News ====================
 
 def fetch_news_engine(mode, title_history, link_history):
     if mode == "MARITIME":
         base = "水警 OR 警拘 OR 命案 OR 走私 OR 爆竊 OR 太空油 OR 電子煙"
         sites = " OR ".join([f"site:{d}" for d in HK_MEDIA_DOMAINS])
         query = f"({base}) AND ({sites})"
-    elif mode == "WAR":
-        query = " OR ".join([f'"{k}"' for k in WAR_KEYWORDS])
     else:
         query = " OR ".join(WATCHLIST.values())
 
@@ -321,19 +576,15 @@ def fetch_news_engine(mode, title_history, link_history):
     try:
         r = requests.get(url, timeout=15)
         soup = BeautifulSoup(r.content, 'xml')
-        items = soup.find_all('item')[:15] # 限制前 15 條進行併發檢查，兼顧效率與覆蓋率
-        
-        # 【增量修改】利用 ThreadPoolExecutor 開啟多線程並行下載，打破下載時間牆
+        items = soup.find_all('item')[:15]
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
                 executor.submit(check_single_item, item, title_history, cur_t, link_history, mode, hk_now)
                 for item in items
             ]
-            
             for future in futures:
                 res = future.result()
                 if res:
-                    # 進行最後的即時局部去重核對
                     if not is_duplicate_ai(res["title"], title_history + cur_t):
                         found.append(res["msg"])
                         cur_t.append(res["title"])
@@ -343,17 +594,18 @@ def fetch_news_engine(mode, title_history, link_history):
     except: pass
     return found, cur_t, cur_l
 
-# ==================== 5. 執行與報告 ====================
+# ==================== 6. 执行与报告 ====================
 
 def run_monitor():
-    hk_tz = timezone(timedelta(hours=8)); now = datetime.now(hk_tz)
-    t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
+    hk_tz = timezone(timedelta(hours=8))
+    now = datetime.now(hk_tz)
+    t_hist = load_history(HISTORY_FILE)
+    l_hist = load_history(LINK_HISTORY_FILE)
     rthk_hist = load_history(RTHK_HISTORY_FILE)
 
     rthk_urgent, rl, rt = fetch_rthk_news(rthk_hist)
     m_news, mt, ml = fetch_news_engine("MARITIME", t_hist, l_hist)
     f_news, ft, fl = fetch_news_engine("FINANCE", t_hist, l_hist)
-    w_news, wt, wl = fetch_news_engine("WAR", t_hist, l_hist)
 
     final_m_news = rthk_urgent.copy()
     for m_item, m_title in zip(m_news, mt):
@@ -361,38 +613,61 @@ def run_monitor():
             final_m_news.append(m_item)
 
     if now.hour == 8 and now.minute < 30:
-        v_idx = get_market_indices()
         report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
-        report.append(f"• VIX: {v_idx['VIX']:.2f}\n")
         report.append("<b>【持倉 KDJ 預警】</b>")
+
         for sym, name in WATCHLIST.items():
             price_val = 0.0
             try:
                 p_data = yf.Ticker(sym).history(period="1d")
-                if not p_data.empty: price_val = p_data['Close'].iloc[-1]
+                if not p_data.empty:
+                    price_val = p_data['Close'].iloc[-1]
             except: pass
-            wk_k, mo_k = get_kdj_data(sym, "1wk"), get_kdj_data(sym, "1mo")
+            wk_k = get_kdj_data(sym, "1wk")
+            mo_k = get_kdj_data(sym, "1mo")
             status = ""
             if wk_k < 20 and mo_k < 20: status = " ⚠️ 極度超賣"
             elif wk_k > 80 and mo_k > 80: status = " 🔥 極度超買"
             elif wk_k < 20: status = " 📈 週線超賣"
             elif wk_k > 80: status = " 📉 週線超買"
             report.append(f"• {name}: <b>{price_val:.2f}</b> | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
-        
-        if f_news: report.append(f"\n💰 <b>持倉動態：</b>\n" + "\n".join(f_news))
-        if w_news: report.append(f"\n🌍 <b>戰爭實時：</b>\n" + "\n".join(w_news))
-        if final_m_news: report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(final_m_news))
-        
-        requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                      data={"chat_id": CHAT_ID, "text": "\n".join(report), "parse_mode": "HTML", "disable_web_page_preview": "True"})
-    else:
-        urgent = final_m_news + w_news
-        if urgent:
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                          data={"chat_id": CHAT_ID, "text": f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"})
 
-    save_history(HISTORY_FILE, mt + wt + ft)
-    save_history(LINK_HISTORY_FILE, ml + wl + fl)
+        # ETF 深度关注板块（自动抓取+比对）
+        report.append("\n<b>【3466 & 3145 深度關注】</b>")
+        try:
+            etf_section = build_etf_section()
+            report.append(etf_section)
+        except Exception as e:
+            report.append(f"數據抓取異常：{e}")
+
+        # ETF 相关消息（成份股/管理费/派息/政策）
+        etf_news, etf_titles, etf_links = fetch_etf_news(t_hist, l_hist)
+        if etf_news:
+            report.append("\n<b>📢 3466/3145 相關消息</b>")
+            report.extend(etf_news)
+        else:
+            report.append("\n📢 3466/3145 相關消息：暫無特別")
+
+        # 其他持仓新闻
+        if f_news:
+            report.append(f"\n💰 <b>其他持倉動態：</b>\n" + "\n".join(f_news))
+        if final_m_news:
+            report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(final_m_news))
+
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": "\n".join(report), "parse_mode": "HTML", "disable_web_page_preview": "True"},
+        )
+    else:
+        urgent = final_m_news
+        if urgent:
+            requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                data={"chat_id": CHAT_ID, "text": f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"},
+            )
+
+    save_history(HISTORY_FILE, mt + ft)
+    save_history(LINK_HISTORY_FILE, ml + fl)
     save_history(RTHK_HISTORY_FILE, rl)
 
 if __name__ == "__main__":
