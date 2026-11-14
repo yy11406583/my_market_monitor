@@ -1,4 +1,4 @@
-name: 2-Hour Smart Monitor V3
+name: Smart Monitor
 
 on:
   schedule:
@@ -31,10 +31,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # 加入 --no-cache-dir 強制重新下載
-          pip install --no-cache-dir requests beautifulsoup4 yfinance pandas lxml akshare flagmoji country_converter
-          # 打印驗證信息，確認包是否真的裝上了
-          pip show flagmoji
+          # 改用 emoji-country-flag 替代已废弃的 flagmoji
+          pip install --no-cache-dir requests beautifulsoup4 yfinance pandas lxml akshare emoji-country-flag country_converter
 
       - name: Execute Monitor Script
         env:
@@ -46,7 +44,6 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 包含所有產生的紀錄檔
           touch sent_news.txt sent_links.txt sent_rthk_links.txt etf_data_cache.json
           git add sent_news.txt sent_links.txt sent_rthk_links.txt etf_data_cache.json
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update news history [skip ci]" && git push origin main)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update history and cache [skip ci]" && git push origin main)
