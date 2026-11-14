@@ -11,7 +11,7 @@ import urllib.parse
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-import flagmoji
+from emoji_country_flag import flag
 import country_converter as coco
 
 # ==================== 1. 配置区 ====================
@@ -62,7 +62,7 @@ POLICE_KEYWORDS = ["水警", "警方", "警察", "警員", "警署", "警拘", "
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
 
-# 中文国家名 → ISO 2 字母代码（补充 country_converter 不熟悉的简写）
+# 中文国家名 → ISO 2 字母代码
 CN_TO_ISO2 = {
     "中國": "CN", "中国": "CN",
     "台灣": "TW", "台湾": "TW", "臺灣": "TW",
@@ -86,55 +86,28 @@ CN_TO_ISO2 = {
 
 # 3466 十大持仓中文映射
 NAME_MAP_3466 = {
-    "VTECH": ("偉易達", "💻"),
-    "SITC": ("海豐國際", "🚢"),
-    "YUE YUEN": ("裕元集團", "👟"),
-    "CIMC": ("中集集團", "🚛"),
-    "CHINA MOBILE": ("中國移動", "📱"),
-    "COSCO": ("中遠海控", "🚢"),
-    "ORIENT OVERSEAS": ("東方海外", "🚢"),
-    "CHINA CONSTRUCTION": ("中國建築", "🏗️"),
-    "CATHAY PACIFIC": ("國泰航空", "✈️"),
-    "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"),
-    "FAR EAST HORIZON": ("遠東宏信", "🏦"),
-    "ONEWO": ("萬物雲", "🏢"),
-    "CHINA FEIHE": ("中國飛鶴", "🍼"),
-    "SINO LAND": ("信和置業", "🏢"),
-    "HANG LUNG": ("恒隆地產", "🏢"),
-    "CLP": ("中電控股", "⚡"),
-    "HK ELECTRIC": ("港燈", "⚡"),
-    "BOC HONG KONG": ("中銀香港", "🏦"),
-    "HANG SENG BANK": ("恒生銀行", "🏦"),
-    "HKT": ("香港電訊", "📡"),
-    "PCCW": ("電訊盈科", "📡"),
-    "MTR": ("港鐵公司", "🚇"),
-    "LINK REIT": ("領展房產", "🏬"),
-    "CHINA RES": ("華潤", "🏢"),
-    "GALAXY": ("銀河娛樂", "🎰"),
-    "SJM": ("澳博控股", "🎰"),
-    "WYNN": ("永利澳門", "🎰"),
-    "SANDS": ("金沙中國", "🎰"),
+    "VTECH": ("偉易達", "💻"), "SITC": ("海豐國際", "🚢"), "YUE YUEN": ("裕元集團", "👟"),
+    "CIMC": ("中集集團", "🚛"), "CHINA MOBILE": ("中國移動", "📱"), "COSCO": ("中遠海控", "🚢"),
+    "ORIENT OVERSEAS": ("東方海外", "🚢"), "CHINA CONSTRUCTION": ("中國建築", "🏗️"),
+    "CATHAY PACIFIC": ("國泰航空", "✈️"), "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"),
+    "FAR EAST HORIZON": ("遠東宏信", "🏦"), "ONEWO": ("萬物雲", "🏢"),
+    "CHINA FEIHE": ("中國飛鶴", "🍼"), "SINO LAND": ("信和置業", "🏢"),
+    "HANG LUNG": ("恒隆地產", "🏢"), "CLP": ("中電控股", "⚡"), "HK ELECTRIC": ("港燈", "⚡"),
+    "BOC HONG KONG": ("中銀香港", "🏦"), "HANG SENG BANK": ("恒生銀行", "🏦"),
+    "HKT": ("香港電訊", "📡"), "PCCW": ("電訊盈科", "📡"), "MTR": ("港鐵公司", "🚇"),
+    "LINK REIT": ("領展房產", "🏬"), "CHINA RES": ("華潤", "🏢"), "GALAXY": ("銀河娛樂", "🎰"),
+    "SJM": ("澳博控股", "🎰"), "WYNN": ("永利澳門", "🎰"), "SANDS": ("金沙中國", "🎰"),
     "MGM": ("美高梅中國", "🎰"),
 }
 
 # 3145 十大持仓中文映射
 NAME_MAP_3145 = {
-    "BBRI": ("印尼人民銀行", "🏦🇮🇩"),
-    "6181": ("老鋪黃金", "💎"),
-    "1138": ("中遠海能", "🚢"),
-    "BBNI": ("印尼國家銀行", "🏦🇮🇩"),
-    "8299": ("群聯電子", "💾"),
-    "3036": ("文曄科技", "📦"),
-    "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"),
-    "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
-    "1378": ("中國宏橋", "⛏️"),
-    "3311": ("中國建築國際", "🏗️"),
-    "0322": ("康師傅控股", "🍜"),
-    "SANTOS": ("Santos Ltd", "🛢️🇦🇺"),
-    "UNI-PRESIDENT": ("統一企業中國", "🍜"),
-    "VEDANTA": ("Vedanta Ltd", "⛏️🇮🇳"),
-    "1102": ("亞洲水泥", "🏗️"),
-    "2688": ("新奧能源", "⚡"),
+    "BBRI": ("印尼人民銀行", "🏦🇮🇩"), "6181": ("老鋪黃金", "💎"), "1138": ("中遠海能", "🚢"),
+    "BBNI": ("印尼國家銀行", "🏦🇮🇩"), "8299": ("群聯電子", "💾"), "3036": ("文曄科技", "📦"),
+    "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"), "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
+    "1378": ("中國宏橋", "⛏️"), "3311": ("中國建築國際", "🏗️"), "0322": ("康師傅控股", "🍜"),
+    "SANTOS": ("Santos Ltd", "🛢️🇦🇺"), "UNI-PRESIDENT": ("統一企業中國", "🍜"),
+    "VEDANTA": ("Vedanta Ltd", "⛏️🇮🇳"), "1102": ("亞洲水泥", "🏗️"), "2688": ("新奧能源", "⚡"),
 }
 
 HK_STRONG_INDICATORS = [
@@ -186,7 +159,7 @@ def get_map_url(title):
     return ""
 
 def get_flag_emoji(country_name):
-    """将中文/英文国家名转为国旗 Emoji（手机 TG 正常显示）"""
+    """将中文/英文国家名转为国旗 Emoji"""
     name = (country_name or "").strip()
     if not name:
         return "🌏"
@@ -194,14 +167,14 @@ def get_flag_emoji(country_name):
     if name in CN_TO_ISO2:
         iso2 = CN_TO_ISO2[name]
         try:
-            return flagmoji.flagmoji(iso2)
+            return flag(iso2)
         except:
             pass
     # 2. country_converter 自动识别
     try:
         iso2 = coco.convert(names=[name], to="ISO2", not_found=None)
         if iso2 and iso2 not in ("not found", None, ""):
-            return flagmoji.flagmoji(iso2)
+            return flag(iso2)
     except:
         pass
     # 3. 兜底
@@ -225,7 +198,6 @@ def get_kdj_data(ticker, interval):
         return 50.0
 
 def is_old_news_url(url):
-    """动态年份判断，不硬编码"""
     hk_now = datetime.now(timezone(timedelta(hours=8)))
     cur_yr = hk_now.year
     cur_mo = hk_now.month
@@ -287,7 +259,6 @@ def is_old_html_content(url):
     return False
 
 def check_single_item(item, title_history, link_history, mode, hk_now):
-    """单条新闻检查（多线程工作函数，批内去重由主线程负责）"""
     try:
         title = item.title.text.split(' - ')[0].strip()
         link = item.link.text
@@ -388,7 +359,6 @@ def map_3466_name(raw_name):
     return re.sub(r'\(.*?\)', '', raw_name).strip(), "📊"
 
 def fetch_3466_holdings():
-    """抓取 3466 十大持仓：MoneyDJ 优先，yfinance 备援"""
     holdings = []
     try:
         url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3466.HK"
@@ -433,7 +403,6 @@ def fetch_3466_holdings():
     return holdings[:10]
 
 def fetch_3145_data():
-    """从 MoneyDJ 抓取 3145 十大持仓和区域权重（原始数据，不做二次加工）"""
     result = {"holdings": [], "countries": []}
 
     def get_cn_name(raw_name):
@@ -451,7 +420,6 @@ def fetch_3145_data():
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
 
-        # 区域权重
         for t in tables:
             if "區域" in t.text and "比例" in t.text:
                 rows = t.find_all("tr")[1:]
@@ -470,7 +438,6 @@ def fetch_3145_data():
                                 pass
                 break
 
-        # 十大持仓
         for t in tables:
             if "個股" in t.text:
                 rows = t.find_all("tr")[1:]
@@ -499,7 +466,6 @@ def build_etf_section():
     lines = []
     new_cache = dict(cache)
 
-    # ========== 3466 ==========
     lines.append("🏛️ 3466 恒生高息股")
     divs_3466 = fetch_dividends("3466.HK")
     curr_3466 = divs_3466[0] if divs_3466 else None
@@ -523,7 +489,6 @@ def build_etf_section():
     else:
         lines.append("  📊 十大持倉：獲取失敗")
 
-    # ========== 3145 ==========
     lines.append("\n🌏 3145 華夏亞洲高息股票ETF")
     divs_3145 = fetch_dividends("3145.HK")
     curr_3145 = divs_3145[0] if divs_3145 else None
