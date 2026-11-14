@@ -26,15 +26,14 @@ RTHK_RSS_URL = "https://news.rthk.hk/rthk/ch/rss/local.xml"
 
 # 已移除匯豐、建行、微軟；加入 3145
 WATCHLIST = {
-    "3466.HK": "恒生高息股",
-    "3145.HK": "華夏亞洲高息股票ETF",
+    "3466.HK": "3466",
+    "3145.HK": "3145",
     "VOO": "VOO",
     "QQQ": "QQQ",
     "TSLA": "Tesla",
 }
 
-# ETF 深度關注清單
-ETF_WATCH = ["3466.HK", "3145.HK"]
+# ETF 相关新闻关键词
 ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息"]
 ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費"]
 
@@ -258,7 +257,7 @@ def save_etf_cache(data):
         pass
 
 def fetch_dividends(symbol):
-    """使用 yfinance 获取派息历史（最可靠的来源）"""
+    """使用 yfinance 获取派息历史（最可靠来源）"""
     try:
         ticker = yf.Ticker(symbol)
         divs = ticker.dividends
@@ -277,70 +276,86 @@ def fetch_dividends(symbol):
         return []
 
 def fetch_3466_holdings():
-    """抓取 3466 十大持仓（优先 AAStocks，备援 etnet）"""
+    """抓取 3466 十大持仓：MoneyDJ 优先，yfinance 备援"""
     holdings = []
-    # 尝试 AAStocks
+    # MoneyDJ 抓取
     try:
-        url = "http://www.aastocks.com/tc/stocks/etf/holdings.aspx?symbol=03466"
+        url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3466.HK"
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
-        for table in tables:
-            if "比重" in table.text or "佔比" in table.text or "%" in table.text:
-                rows = table.find_all("tr")[1:]
+        for t in tables:
+            if "個股" in t.text:
+                rows = t.find_all("tr")[1:]
                 for row in rows:
                     cols = row.find_all("td")
-                    if len(cols) >= 3:
-                        name = cols[0].text.strip()
-                        weight = cols[-1].text.strip()
-                        if name and "%" in weight:
-                            holdings.append({"name": name, "weight": weight})
+                    if len(cols) >= 2:
+                        raw_name = cols[0].text.strip()
+                        weight_text = cols[1].text.strip()
+                        name = re.sub(r'\(.*?\)', '', raw_name).strip()
+                        if name and re.match(r'[\d.]+', weight_text):
+                            try:
+                                holdings.append({"name": name, "weight": f"{float(weight_text):.2f}%"})
+                            except ValueError:
+                                pass
                     if len(holdings) >= 10:
                         break
                 if holdings:
                     break
     except Exception as e:
-        print(f"[3466 Holdings AAStocks] {e}")
+        print(f"[3466 MoneyDJ] {e}")
 
-    # 备援：etnet
+    # yfinance 备援
     if not holdings:
         try:
-            url = "https://etf.etnet.com.hk/www/chi/stocks/realtime/quote_holdings.php?code=03466"
-            headers = {"User-Agent": "Mozilla/5.0"}
-            resp = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(resp.text, "html.parser")
-            tables = soup.find_all("table")
-            for table in tables:
-                if "%" in table.text:
-                    rows = table.find_all("tr")[1:]
-                    for row in rows:
-                        cols = row.find_all("td")
-                        if len(cols) >= 2:
-                            name = cols[0].text.strip()
-                            weight = cols[-1].text.strip()
-                            if name and "%" in weight:
-                                holdings.append({"name": name, "weight": weight})
-                        if len(holdings) >= 10:
-                            break
-                    if holdings:
-                        break
+            ticker = yf.Ticker("3466.HK")
+            fund = ticker.funds_data
+            if fund and fund.top_holdings is not None and not fund.top_holdings.empty:
+                for _, row in fund.top_holdings.head(10).iterrows():
+                    holdings.append({
+                        "name": row.get("Name", row.name),
+                        "weight": f"{row['Holding Percent']*100:.2f}%"
+                    })
         except Exception as e:
-            print(f"[3466 Holdings etnet] {e}")
+            print(f"[3466 yfinance 备援] {e}")
 
     return holdings[:10]
 
 def fetch_3145_data():
-    """抓取 3145 十大持仓、国家权重（来自 MoneyDJ）"""
+    """从 MoneyDJ 抓取 3145 的十大持仓和区域权重（原始数据，不做二次加工）"""
     result = {"holdings": [], "countries": []}
+
+    NAME_MAP = {
+        "BBRI": ("印尼人民銀行", "🏦🇮🇩"),
+        "6181": ("老鋪黃金", "💎"),
+        "1138": ("中遠海能", "🚢"),
+        "BBNI": ("印尼國家銀行", "🏦🇮🇩"),
+        "8299": ("群聯電子", "💾"),
+        "3036": ("文曄科技", "📦"),
+        "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"),
+        "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
+        "1378": ("中國宏橋", "⛏️"),
+        "3311": ("中國建築國際", "🏗️"),
+        "0322": ("康師傅控股", "🍜"),
+    }
+
+    def get_cn_name(raw_name):
+        upper = raw_name.upper()
+        for code, (cn, icon) in NAME_MAP.items():
+            if code.upper() in upper or cn in raw_name:
+                return cn, icon
+        cleaned = re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC).*$', '', raw_name, flags=re.I).strip()
+        return cleaned or raw_name, "📊"
+
     try:
-        url = "http://210.17.21.214/ETF/X/Basic/Basic0007.xdjhtm?etfid=3145.HK"
+        url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3145.HK"
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
 
-        # 国家权重
+        # 1. 区域权重（查找含"區域"的表格，直接使用原始数据）
         for t in tables:
             if "區域" in t.text and "比例" in t.text:
                 rows = t.find_all("tr")[1:]
@@ -348,123 +363,105 @@ def fetch_3145_data():
                     cols = row.find_all("td")
                     if len(cols) >= 3:
                         country = cols[0].text.strip()
-                        weight = cols[-1].text.strip()
-                        if country and "%" in weight:
-                            result["countries"].append({"country": country, "weight": weight})
+                        weight_text = cols[-1].text.strip()
+                        if country and re.match(r'[\d.]+', weight_text):
+                            try:
+                                result["countries"].append({
+                                    "country": country,
+                                    "weight": float(weight_text)
+                                })
+                            except ValueError:
+                                pass
                 break
 
-        # 十大持仓
+        # 2. 十大持仓
         for t in tables:
-            if "個股" in t.text or "持股" in t.text:
+            if "個股" in t.text:
                 rows = t.find_all("tr")[1:]
                 for row in rows:
                     cols = row.find_all("td")
                     if len(cols) >= 2:
-                        name = cols[0].text.strip()
-                        weight = cols[1].text.strip()
-                        if name and "%" in weight:
-                            result["holdings"].append({"name": name, "weight": weight})
+                        raw_name = cols[0].text.strip()
+                        weight_text = cols[1].text.strip()
+                        if raw_name and re.match(r'[\d.]+', weight_text):
+                            cn, icon = get_cn_name(raw_name)
+                            result["holdings"].append({
+                                "name": cn, "icon": icon,
+                                "weight": float(weight_text)
+                            })
                     if len(result["holdings"]) >= 10:
                         break
                 if result["holdings"]:
                     break
     except Exception as e:
-        print(f"[3145 Holdings] {e}")
+        print(f"[3145 MoneyDJ] {e}")
 
     return result
 
-def guess_country_by_name(name):
-    """根据名称启发式判断国家"""
-    n = name.lower()
-    if any(k in n for k in ["印尼", "indonesia", "bbri", "bbni", "bmri", "antm", "bank rakyat", "bank negara", "bank mandiri", "aneka tambang"]):
-        return "印尼"
-    if any(k in n for k in ["台灣", "taiwan", "大聯大", "文曄", "phison", "mediatek", "tsmc", "台積"]):
-        return "台灣"
-    if any(k in n for k in ["中國", "china", "中遠", "中國宏橋", "中國建築", "老鋪", "復星", "華潤", "騰訊"]):
-        return "中國"
-    if any(k in n for k in ["香港", "hong kong", "hk"]):
-        return "香港"
-    if any(k in n for k in ["新加坡", "singapore", "dbs", "ocbc", "uob"]):
-        return "新加坡"
-    if any(k in n for k in ["韓國", "korea", "samsung", "sk hynix"]):
-        return "韓國"
-    if any(k in n for k in ["泰國", "thailand", "ptt", "kasikorn"]):
-        return "泰國"
-    if any(k in n for k in ["馬來西亞", "malaysia", "maybank"]):
-        return "馬來西亞"
-    if any(k in n for k in ["印度", "india", "reliance", "infosys"]):
-        return "印度"
-    if any(k in n for k in ["菲律賓", "philippines"]):
-        return "菲律賓"
-    return ""
-
 def build_etf_section():
-    """构建 3466 & 3145 的深度关注板块文本"""
     cache = load_etf_cache()
     lines = []
     new_cache = dict(cache)
 
-    # --- 3466 ---
-    lines.append("<b>3466 恒生高息股</b>")
+    # ========== 3466 ==========
+    lines.append("🏛️ 3466 恒生高息股")
 
-    # 派息
     divs_3466 = fetch_dividends("3466.HK")
-    curr_div_3466 = divs_3466[0] if divs_3466 else None
-    prev_div_3466 = cache.get("3466.HK", {}).get("latest")
-    if curr_div_3466:
-        div_line = f"  💰 最新派息：{curr_div_3466['amount']} (除息日 {curr_div_3466['date']})"
-        if prev_div_3466 and prev_div_3466.get("date") != curr_div_3466["date"]:
-            div_line += f"\n  🆕 新派息！上次為 {prev_div_3466['amount']} (除息日 {prev_div_3466['date']})"
-        elif prev_div_3466 and prev_div_3466.get("amount") != curr_div_3466["amount"]:
-            div_line += f"\n  ⚠️ 金額變動！上次為 {prev_div_3466['amount']}"
-        lines.append(div_line)
-    else:
-        lines.append("  💰 最新派息：數據獲取失敗")
-    new_cache["3466.HK"] = {"latest": curr_div_3466} if curr_div_3466 else new_cache.get("3466.HK", {})
+    curr_3466 = divs_3466[0] if divs_3466 else None
+    prev_3466 = cache.get("3466.HK", {}).get("latest")
 
-    # 十大持仓
-    holdings_3466 = fetch_3466_holdings()
-    if holdings_3466:
+    if curr_3466:
+        line = f"  💰 派息：{curr_3466['amount']}（除息 {curr_3466['date']}）"
+        if prev_3466 and prev_3466.get("date") != curr_3466["date"]:
+            line += f"\n  🆕 新派息！上次 {prev_3466['amount']}（{prev_3466['date']}）"
+        elif prev_3466 and prev_3466.get("amount") != curr_3466["amount"]:
+            line += f"\n  ⚠️ 金額變動！上次 {prev_3466['amount']}"
+        lines.append(line)
+    else:
+        lines.append("  💰 派息：獲取失敗")
+    new_cache["3466.HK"] = {"latest": curr_3466} if curr_3466 else new_cache.get("3466.HK", {})
+
+    h3466 = fetch_3466_holdings()
+    if h3466:
         lines.append("  📊 十大持倉：")
-        for h in holdings_3466:
-            lines.append(f"    - {h['name']}: {h['weight']}")
+        for h in h3466:
+            lines.append(f"    · {h['name']}  {h['weight']}")
     else:
-        lines.append("  📊 十大持倉：數據獲取失敗")
+        lines.append("  📊 十大持倉：獲取失敗")
 
-    # --- 3145 ---
-    lines.append("\n<b>3145 華夏亞洲高息股票ETF</b>")
+    # ========== 3145 ==========
+    lines.append("\n🌏 3145 華夏亞洲高息股票ETF")
 
-    # 派息
     divs_3145 = fetch_dividends("3145.HK")
-    curr_div_3145 = divs_3145[0] if divs_3145 else None
-    prev_div_3145 = cache.get("3145.HK", {}).get("latest")
-    if curr_div_3145:
-        div_line = f"  💰 最新派息：{curr_div_3145['amount']} (除息日 {curr_div_3145['date']})"
-        if prev_div_3145 and prev_div_3145.get("date") != curr_div_3145["date"]:
-            div_line += f"\n  🆕 新派息！上次為 {prev_div_3145['amount']} (除息日 {prev_div_3145['date']})"
-        elif prev_div_3145 and prev_div_3145.get("amount") != curr_div_3145["amount"]:
-            div_line += f"\n  ⚠️ 金額變動！上次為 {prev_div_3145['amount']}"
-        lines.append(div_line)
-    else:
-        lines.append("  💰 最新派息：數據獲取失敗")
-    new_cache["3145.HK"] = {"latest": curr_div_3145} if curr_div_3145 else new_cache.get("3145.HK", {})
+    curr_3145 = divs_3145[0] if divs_3145 else None
+    prev_3145 = cache.get("3145.HK", {}).get("latest")
 
-    # 3145 十大持仓 + 国家
+    if curr_3145:
+        line = f"  💰 派息：{curr_3145['amount']}（除息 {curr_3145['date']}）"
+        if prev_3145 and prev_3145.get("date") != curr_3145["date"]:
+            line += f"\n  🆕 新派息！上次 {prev_3145['amount']}（{prev_3145['date']}）"
+        elif prev_3145 and prev_3145.get("amount") != curr_3145["amount"]:
+            line += f"\n  ⚠️ 金額變動！上次 {prev_3145['amount']}"
+        lines.append(line)
+    else:
+        lines.append("  💰 派息：獲取失敗")
+    new_cache["3145.HK"] = {"latest": curr_3145} if curr_3145 else new_cache.get("3145.HK", {})
+
     data_3145 = fetch_3145_data()
     if data_3145["holdings"]:
-        lines.append("  📊 十大持倉（含國家）：")
+        lines.append("  📊 十大持倉：")
         for h in data_3145["holdings"]:
-            country = guess_country_by_name(h["name"])
-            tag = f" [{country}]" if country else ""
-            lines.append(f"    - {h['name']}{tag}: {h['weight']}")
+            lines.append(f"    · {h['icon']} {h['name']}  {h['weight']:.2f}%")
     else:
-        lines.append("  📊 十大持倉：數據獲取失敗")
+        lines.append("  📊 十大持倉：獲取失敗")
 
-    # 国家权重
+    # 区域权重：直接展示 MoneyDJ 原始数据，不做任何加工
     if data_3145["countries"]:
-        lines.append("  🌏 國家/區域權重：")
-        for c in data_3145["countries"][:5]:
-            lines.append(f"    - {c['country']}: {c['weight']}")
+        lines.append("  🌏 區域權重（MoneyDJ 原始數據）：")
+        for c in data_3145["countries"]:
+            lines.append(f"    · {c['country']}：{c['weight']:.2f}%")
+    else:
+        lines.append("  🌏 區域權重：獲取失敗")
 
     save_etf_cache(new_cache)
     return "\n".join(lines)
@@ -499,10 +496,9 @@ def fetch_etf_news(title_history, link_history):
                 if is_old_news_url(actual_url): return None
                 try:
                     p_date = parsedate_to_datetime(item.pubDate.text).astimezone(timezone(timedelta(hours=8)))
-                    if hk_now - p_date > timedelta(hours=72): return None  # ETF新闻3天内
+                    if hk_now - p_date > timedelta(hours=72): return None
                 except: return None
                 if is_duplicate_ai(title, title_history + cur_t): return None
-                # 必须包含ETF代码或名称
                 if not any(k in title for k in ETF_NEWS_KEYWORDS): return None
                 msg = f"📢 <b>{title}</b>\n🔗 <a href='{actual_url}'>閱讀全文</a>"
                 return {"msg": msg, "title": title, "url": actual_url}
@@ -613,8 +609,8 @@ def run_monitor():
             final_m_news.append(m_item)
 
     if now.hour == 8 and now.minute < 30:
-        report = [f"<b>📊 市場監控報告 ({now.strftime('%H:%M')})</b>"]
-        report.append("<b>【持倉 KDJ 預警】</b>")
+        report = [f"📊 市場監控報告 ({now.strftime('%H:%M')})"]
+        report.append("【持倉 KDJ 預警】")
 
         for sym, name in WATCHLIST.items():
             price_val = 0.0
@@ -630,29 +626,28 @@ def run_monitor():
             elif wk_k > 80 and mo_k > 80: status = " 🔥 極度超買"
             elif wk_k < 20: status = " 📈 週線超賣"
             elif wk_k > 80: status = " 📉 週線超買"
-            report.append(f"• {name}: <b>{price_val:.2f}</b> | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
+            report.append(f"• {name}: {price_val:.2f} | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
 
-        # ETF 深度关注板块（自动抓取+比对）
-        report.append("\n<b>【3466 & 3145 深度關注】</b>")
+        # ETF 深度关注板块
+        report.append("\n【3466 & 3145 深度關注】")
         try:
             etf_section = build_etf_section()
             report.append(etf_section)
         except Exception as e:
             report.append(f"數據抓取異常：{e}")
 
-        # ETF 相关消息（成份股/管理费/派息/政策）
+        # ETF 相关消息
         etf_news, etf_titles, etf_links = fetch_etf_news(t_hist, l_hist)
         if etf_news:
-            report.append("\n<b>📢 3466/3145 相關消息</b>")
+            report.append("\n📢 3466/3145 相關消息")
             report.extend(etf_news)
         else:
             report.append("\n📢 3466/3145 相關消息：暫無特別")
 
-        # 其他持仓新闻
         if f_news:
-            report.append(f"\n💰 <b>其他持倉動態：</b>\n" + "\n".join(f_news))
+            report.append(f"\n💰 其他持倉動態：\n" + "\n".join(f_news))
         if final_m_news:
-            report.append(f"\n⚓️ <b>突發焦點：</b>\n" + "\n".join(final_m_news))
+            report.append(f"\n⚓️ 突發焦點：\n" + "\n".join(final_m_news))
 
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
@@ -663,7 +658,7 @@ def run_monitor():
         if urgent:
             requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                data={"chat_id": CHAT_ID, "text": f"🔔 <b>即時情報 ({now.strftime('%H:%M')})</b>\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"},
+                data={"chat_id": CHAT_ID, "text": f"🔔 即時情報 ({now.strftime('%H:%M')})\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"},
             )
 
     save_history(HISTORY_FILE, mt + ft)
