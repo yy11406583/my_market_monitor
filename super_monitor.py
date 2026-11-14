@@ -2,7 +2,6 @@ import yfinance as yf
 import requests
 import os
 import re
-import time
 import json
 import math
 from datetime import datetime, timedelta, timezone
@@ -12,6 +11,8 @@ import urllib.parse
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
+import flagmoji
+import country_converter as coco
 
 # ==================== 1. 配置区 ====================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -24,7 +25,6 @@ MAX_HISTORY_DAYS = 7
 
 RTHK_RSS_URL = "https://news.rthk.hk/rthk/ch/rss/local.xml"
 
-# 已移除匯豐、建行、微軟；加入 3145
 WATCHLIST = {
     "3466.HK": "3466",
     "3145.HK": "3145",
@@ -33,7 +33,6 @@ WATCHLIST = {
     "TSLA": "Tesla",
 }
 
-# ETF 相关新闻关键词
 ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息"]
 ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費"]
 
@@ -62,6 +61,81 @@ HARD_ACTIONS = ["走私", "截獲", "拘捕", "偵破", "跳海", "墮海", "遇
 POLICE_KEYWORDS = ["水警", "警方", "警察", "警員", "警署", "警拘", "交通部", "重案組", "反黑組"]
 HK_MEDIA_DOMAINS = ["hk01.com", "news.mingpao.com", "scmp.com", "stheadline.com", "orientaldaily.on.cc", "hket.com", "news.tvb.com", "now.com", "rthk.hk"]
 GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "英國", "加拿大", "澳洲", "新加坡", "泰國", "越南", "菲律賓"]
+
+# 中文国家名 → ISO 2 字母代码（补充 country_converter 不熟悉的简写）
+CN_TO_ISO2 = {
+    "中國": "CN", "中国": "CN",
+    "台灣": "TW", "台湾": "TW", "臺灣": "TW",
+    "香港": "HK",
+    "印尼": "ID", "印度尼西亞": "ID", "印度尼西亚": "ID",
+    "泰國": "TH", "泰国": "TH",
+    "美國": "US", "美国": "US",
+    "印度": "IN",
+    "澳大利亞": "AU", "澳洲": "AU", "澳大利亚": "AU",
+    "韓國": "KR", "韩国": "KR",
+    "日本": "JP",
+    "新加坡": "SG",
+    "馬來西亞": "MY", "马来西亚": "MY",
+    "菲律賓": "PH", "菲律宾": "PH",
+    "越南": "VN",
+    "英國": "GB", "英国": "GB",
+    "加拿大": "CA",
+    "德國": "DE", "德国": "DE",
+    "法國": "FR", "法国": "FR",
+}
+
+# 3466 十大持仓中文映射
+NAME_MAP_3466 = {
+    "VTECH": ("偉易達", "💻"),
+    "SITC": ("海豐國際", "🚢"),
+    "YUE YUEN": ("裕元集團", "👟"),
+    "CIMC": ("中集集團", "🚛"),
+    "CHINA MOBILE": ("中國移動", "📱"),
+    "COSCO": ("中遠海控", "🚢"),
+    "ORIENT OVERSEAS": ("東方海外", "🚢"),
+    "CHINA CONSTRUCTION": ("中國建築", "🏗️"),
+    "CATHAY PACIFIC": ("國泰航空", "✈️"),
+    "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"),
+    "FAR EAST HORIZON": ("遠東宏信", "🏦"),
+    "ONEWO": ("萬物雲", "🏢"),
+    "CHINA FEIHE": ("中國飛鶴", "🍼"),
+    "SINO LAND": ("信和置業", "🏢"),
+    "HANG LUNG": ("恒隆地產", "🏢"),
+    "CLP": ("中電控股", "⚡"),
+    "HK ELECTRIC": ("港燈", "⚡"),
+    "BOC HONG KONG": ("中銀香港", "🏦"),
+    "HANG SENG BANK": ("恒生銀行", "🏦"),
+    "HKT": ("香港電訊", "📡"),
+    "PCCW": ("電訊盈科", "📡"),
+    "MTR": ("港鐵公司", "🚇"),
+    "LINK REIT": ("領展房產", "🏬"),
+    "CHINA RES": ("華潤", "🏢"),
+    "GALAXY": ("銀河娛樂", "🎰"),
+    "SJM": ("澳博控股", "🎰"),
+    "WYNN": ("永利澳門", "🎰"),
+    "SANDS": ("金沙中國", "🎰"),
+    "MGM": ("美高梅中國", "🎰"),
+}
+
+# 3145 十大持仓中文映射
+NAME_MAP_3145 = {
+    "BBRI": ("印尼人民銀行", "🏦🇮🇩"),
+    "6181": ("老鋪黃金", "💎"),
+    "1138": ("中遠海能", "🚢"),
+    "BBNI": ("印尼國家銀行", "🏦🇮🇩"),
+    "8299": ("群聯電子", "💾"),
+    "3036": ("文曄科技", "📦"),
+    "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"),
+    "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
+    "1378": ("中國宏橋", "⛏️"),
+    "3311": ("中國建築國際", "🏗️"),
+    "0322": ("康師傅控股", "🍜"),
+    "SANTOS": ("Santos Ltd", "🛢️🇦🇺"),
+    "UNI-PRESIDENT": ("統一企業中國", "🍜"),
+    "VEDANTA": ("Vedanta Ltd", "⛏️🇮🇳"),
+    "1102": ("亞洲水泥", "🏗️"),
+    "2688": ("新奧能源", "⚡"),
+}
 
 HK_STRONG_INDICATORS = [
     "香港", "尖沙咀", "尖東", "維港", "維多利亞港", "星光大道", "文化中心", "海港城", "天星碼頭",
@@ -111,6 +185,28 @@ def get_map_url(title):
             return f"\n📍 <a href='https://www.google.com/maps/search/{query}'>查看地點: {place}</a>"
     return ""
 
+def get_flag_emoji(country_name):
+    """将中文/英文国家名转为国旗 Emoji（手机 TG 正常显示）"""
+    name = (country_name or "").strip()
+    if not name:
+        return "🌏"
+    # 1. 手动映射优先
+    if name in CN_TO_ISO2:
+        iso2 = CN_TO_ISO2[name]
+        try:
+            return flagmoji.flagmoji(iso2)
+        except:
+            pass
+    # 2. country_converter 自动识别
+    try:
+        iso2 = coco.convert(names=[name], to="ISO2", not_found=None)
+        if iso2 and iso2 not in ("not found", None, ""):
+            return flagmoji.flagmoji(iso2)
+    except:
+        pass
+    # 3. 兜底
+    return "🌏"
+
 def get_kdj_data(ticker, interval):
     try:
         df = yf.Ticker(ticker).history(period="2y", interval=interval)
@@ -129,26 +225,35 @@ def get_kdj_data(ticker, interval):
         return 50.0
 
 def is_old_news_url(url):
+    """动态年份判断，不硬编码"""
     hk_now = datetime.now(timezone(timedelta(hours=8)))
-    current_year = str(hk_now.year)
-    current_month_2d = f"{hk_now.month:02d}"
-    date_blocks = re.findall(r'\d{4,8}', url)
-    for block in date_blocks:
-        if len(block) == 4:
-            if block != current_year and block in ["2022", "2023", "2024", "2025"]:
-                return True
-        elif len(block) >= 6:
-            if block.startswith(("2022", "2023", "2024", "2025")):
-                return True
-            if block.startswith(current_year):
-                month_part = block[4:6]
-                if month_part.isdigit() and month_part != current_month_2d and month_part < current_month_2d:
+    cur_yr = hk_now.year
+    cur_mo = hk_now.month
+
+    for block in re.findall(r'\d{4,8}', url):
+        try:
+            if len(block) == 4:
+                yr = int(block)
+                if 2000 < yr < cur_yr:
                     return True
-    slash_date = re.search(r'/(\d{4})-(\d{2})-\d{2}/', url)
-    if slash_date:
-        yr, mo = slash_date.group(1), slash_date.group(2)
-        if yr != current_year or mo != current_month_2d:
-            return True
+            elif len(block) >= 6:
+                yr = int(block[:4])
+                mo = int(block[4:6])
+                if 2000 < yr < cur_yr:
+                    return True
+                if yr == cur_yr and 1 <= mo <= 12 and mo < cur_mo:
+                    return True
+        except:
+            pass
+
+    slash = re.search(r'/(\d{4})-(\d{2})-\d{2}/', url)
+    if slash:
+        try:
+            yr, mo = int(slash.group(1)), int(slash.group(2))
+            if yr < cur_yr or (yr == cur_yr and mo < cur_mo):
+                return True
+        except:
+            pass
     return False
 
 def is_old_html_content(url):
@@ -181,7 +286,8 @@ def is_old_html_content(url):
         pass
     return False
 
-def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_now):
+def check_single_item(item, title_history, link_history, mode, hk_now):
+    """单条新闻检查（多线程工作函数，批内去重由主线程负责）"""
     try:
         title = item.title.text.split(' - ')[0].strip()
         link = item.link.text
@@ -200,7 +306,7 @@ def check_single_item(item, title_history, cur_t_list, link_history, mode, hk_no
                 if hk_now - p_date > timedelta(hours=24): return None
             else: return None
         except: return None
-        if is_duplicate_ai(title, title_history + cur_t_list): return None
+        if is_duplicate_ai(title, title_history): return None
         valid = False
         if mode == "MARITIME":
             if any(noise in title for noise in NOISE_EXCLUDE): return None
@@ -257,7 +363,6 @@ def save_etf_cache(data):
         pass
 
 def fetch_dividends(symbol):
-    """使用 yfinance 获取派息历史（最可靠来源）"""
     try:
         ticker = yf.Ticker(symbol)
         divs = ticker.dividends
@@ -275,10 +380,16 @@ def fetch_dividends(symbol):
         print(f"[Dividends {symbol}] 失败: {e}")
         return []
 
+def map_3466_name(raw_name):
+    upper = raw_name.upper()
+    for key, (cn, icon) in NAME_MAP_3466.items():
+        if key in upper or cn in raw_name:
+            return cn, icon
+    return re.sub(r'\(.*?\)', '', raw_name).strip(), "📊"
+
 def fetch_3466_holdings():
     """抓取 3466 十大持仓：MoneyDJ 优先，yfinance 备援"""
     holdings = []
-    # MoneyDJ 抓取
     try:
         url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3466.HK"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -293,12 +404,9 @@ def fetch_3466_holdings():
                     if len(cols) >= 2:
                         raw_name = cols[0].text.strip()
                         weight_text = cols[1].text.strip()
-                        name = re.sub(r'\(.*?\)', '', raw_name).strip()
-                        if name and re.match(r'[\d.]+', weight_text):
-                            try:
-                                holdings.append({"name": name, "weight": f"{float(weight_text):.2f}%"})
-                            except ValueError:
-                                pass
+                        if raw_name and re.match(r'[\d.]+', weight_text):
+                            cn, icon = map_3466_name(raw_name)
+                            holdings.append({"name": cn, "icon": icon, "weight": f"{float(weight_text):.2f}%"})
                     if len(holdings) >= 10:
                         break
                 if holdings:
@@ -306,15 +414,17 @@ def fetch_3466_holdings():
     except Exception as e:
         print(f"[3466 MoneyDJ] {e}")
 
-    # yfinance 备援
     if not holdings:
+        print("[3466] MoneyDJ 返回空，使用 yfinance 备援")
         try:
             ticker = yf.Ticker("3466.HK")
             fund = ticker.funds_data
             if fund and fund.top_holdings is not None and not fund.top_holdings.empty:
                 for _, row in fund.top_holdings.head(10).iterrows():
+                    raw = row.get("Name", str(row.name))
+                    cn, icon = map_3466_name(raw)
                     holdings.append({
-                        "name": row.get("Name", row.name),
+                        "name": cn, "icon": icon,
                         "weight": f"{row['Holding Percent']*100:.2f}%"
                     })
         except Exception as e:
@@ -323,26 +433,12 @@ def fetch_3466_holdings():
     return holdings[:10]
 
 def fetch_3145_data():
-    """从 MoneyDJ 抓取 3145 的十大持仓和区域权重（原始数据，不做二次加工）"""
+    """从 MoneyDJ 抓取 3145 十大持仓和区域权重（原始数据，不做二次加工）"""
     result = {"holdings": [], "countries": []}
-
-    NAME_MAP = {
-        "BBRI": ("印尼人民銀行", "🏦🇮🇩"),
-        "6181": ("老鋪黃金", "💎"),
-        "1138": ("中遠海能", "🚢"),
-        "BBNI": ("印尼國家銀行", "🏦🇮🇩"),
-        "8299": ("群聯電子", "💾"),
-        "3036": ("文曄科技", "📦"),
-        "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"),
-        "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
-        "1378": ("中國宏橋", "⛏️"),
-        "3311": ("中國建築國際", "🏗️"),
-        "0322": ("康師傅控股", "🍜"),
-    }
 
     def get_cn_name(raw_name):
         upper = raw_name.upper()
-        for code, (cn, icon) in NAME_MAP.items():
+        for code, (cn, icon) in NAME_MAP_3145.items():
             if code.upper() in upper or cn in raw_name:
                 return cn, icon
         cleaned = re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC).*$', '', raw_name, flags=re.I).strip()
@@ -355,7 +451,7 @@ def fetch_3145_data():
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
 
-        # 1. 区域权重（查找含"區域"的表格，直接使用原始数据）
+        # 区域权重
         for t in tables:
             if "區域" in t.text and "比例" in t.text:
                 rows = t.find_all("tr")[1:]
@@ -374,7 +470,7 @@ def fetch_3145_data():
                                 pass
                 break
 
-        # 2. 十大持仓
+        # 十大持仓
         for t in tables:
             if "個股" in t.text:
                 rows = t.find_all("tr")[1:]
@@ -405,11 +501,9 @@ def build_etf_section():
 
     # ========== 3466 ==========
     lines.append("🏛️ 3466 恒生高息股")
-
     divs_3466 = fetch_dividends("3466.HK")
     curr_3466 = divs_3466[0] if divs_3466 else None
     prev_3466 = cache.get("3466.HK", {}).get("latest")
-
     if curr_3466:
         line = f"  💰 派息：{curr_3466['amount']}（除息 {curr_3466['date']}）"
         if prev_3466 and prev_3466.get("date") != curr_3466["date"]:
@@ -425,17 +519,15 @@ def build_etf_section():
     if h3466:
         lines.append("  📊 十大持倉：")
         for h in h3466:
-            lines.append(f"    · {h['name']}  {h['weight']}")
+            lines.append(f"    · {h['icon']} {h['name']}  {h['weight']}")
     else:
         lines.append("  📊 十大持倉：獲取失敗")
 
     # ========== 3145 ==========
     lines.append("\n🌏 3145 華夏亞洲高息股票ETF")
-
     divs_3145 = fetch_dividends("3145.HK")
     curr_3145 = divs_3145[0] if divs_3145 else None
     prev_3145 = cache.get("3145.HK", {}).get("latest")
-
     if curr_3145:
         line = f"  💰 派息：{curr_3145['amount']}（除息 {curr_3145['date']}）"
         if prev_3145 and prev_3145.get("date") != curr_3145["date"]:
@@ -455,11 +547,11 @@ def build_etf_section():
     else:
         lines.append("  📊 十大持倉：獲取失敗")
 
-    # 区域权重：直接展示 MoneyDJ 原始数据，不做任何加工
     if data_3145["countries"]:
         lines.append("  🌏 區域權重（MoneyDJ 原始數據）：")
         for c in data_3145["countries"]:
-            lines.append(f"    · {c['country']}：{c['weight']:.2f}%")
+            icon = get_flag_emoji(c['country'])
+            lines.append(f"    · {icon} {c['country']}：{c['weight']:.2f}%")
     else:
         lines.append("  🌏 區域權重：獲取失敗")
 
@@ -467,7 +559,6 @@ def build_etf_section():
     return "\n".join(lines)
 
 def fetch_etf_news(title_history, link_history):
-    """抓取 3466 与 3145 的相关消息（成份股/管理费/派息/政策等）"""
     keywords_q = " OR ".join([f'"{k}"' for k in ETF_NEWS_KEYWORDS])
     special_q = " OR ".join(ETF_SPECIAL_KEYWORDS)
     base = f"({keywords_q}) AND ({special_q})"
@@ -498,7 +589,7 @@ def fetch_etf_news(title_history, link_history):
                     p_date = parsedate_to_datetime(item.pubDate.text).astimezone(timezone(timedelta(hours=8)))
                     if hk_now - p_date > timedelta(hours=72): return None
                 except: return None
-                if is_duplicate_ai(title, title_history + cur_t): return None
+                if is_duplicate_ai(title, title_history): return None
                 if not any(k in title for k in ETF_NEWS_KEYWORDS): return None
                 msg = f"📢 <b>{title}</b>\n🔗 <a href='{actual_url}'>閱讀全文</a>"
                 return {"msg": msg, "title": title, "url": actual_url}
@@ -575,7 +666,7 @@ def fetch_news_engine(mode, title_history, link_history):
         items = soup.find_all('item')[:15]
         with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
-                executor.submit(check_single_item, item, title_history, cur_t, link_history, mode, hk_now)
+                executor.submit(check_single_item, item, title_history, link_history, mode, hk_now)
                 for item in items
             ]
             for future in futures:
@@ -628,7 +719,6 @@ def run_monitor():
             elif wk_k > 80: status = " 📉 週線超買"
             report.append(f"• {name}: {price_val:.2f} | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
 
-        # ETF 深度关注板块
         report.append("\n【3466 & 3145 深度關注】")
         try:
             etf_section = build_etf_section()
@@ -636,7 +726,6 @@ def run_monitor():
         except Exception as e:
             report.append(f"數據抓取異常：{e}")
 
-        # ETF 相关消息
         etf_news, etf_titles, etf_links = fetch_etf_news(t_hist, l_hist)
         if etf_news:
             report.append("\n📢 3466/3145 相關消息")
