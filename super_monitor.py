@@ -11,7 +11,7 @@ import urllib.parse
 from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
-from emoji_country_flag import flag
+import countryflag
 import country_converter as coco
 
 # ==================== 1. 配置区 ====================
@@ -167,14 +167,14 @@ def get_flag_emoji(country_name):
     if name in CN_TO_ISO2:
         iso2 = CN_TO_ISO2[name]
         try:
-            return flag(iso2)
+            return countryflag.getflag([iso2])
         except:
             pass
     # 2. country_converter 自动识别
     try:
         iso2 = coco.convert(names=[name], to="ISO2", not_found=None)
         if iso2 and iso2 not in ("not found", None, ""):
-            return flag(iso2)
+            return countryflag.getflag([iso2])
     except:
         pass
     # 3. 兜底
