@@ -84,11 +84,12 @@ CN_TO_ISO2 = {
     "法國": "FR", "法国": "FR",
 }
 
-# 3466 十大持仓中文映射
+# 3466 十大持仓中文映射 (修复了 China State Construction)
 NAME_MAP_3466 = {
     "VTECH": ("偉易達", "💻"), "SITC": ("海豐國際", "🚢"), "YUE YUEN": ("裕元集團", "👟"),
     "CIMC": ("中集集團", "🚛"), "CHINA MOBILE": ("中國移動", "📱"), "COSCO": ("中遠海控", "🚢"),
-    "ORIENT OVERSEAS": ("東方海外", "🚢"), "CHINA CONSTRUCTION": ("中國建築", "🏗️"),
+    "ORIENT OVERSEAS": ("東方海外", "🚢"), 
+    "STATE CONSTRUCTION": ("中國建築國際", "🏗️"), "3311": ("中國建築國際", "🏗️"),
     "CATHAY PACIFIC": ("國泰航空", "✈️"), "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"),
     "FAR EAST HORIZON": ("遠東宏信", "🏦"), "ONEWO": ("萬物雲", "🏢"),
     "CHINA FEIHE": ("中國飛鶴", "🍼"), "SINO LAND": ("信和置業", "🏢"),
@@ -159,25 +160,21 @@ def get_map_url(title):
     return ""
 
 def get_flag_emoji(country_name):
-    """将中文/英文国家名转为国旗 Emoji"""
     name = (country_name or "").strip()
     if not name:
         return "🌏"
-    # 1. 手动映射优先
     if name in CN_TO_ISO2:
         iso2 = CN_TO_ISO2[name]
         try:
             return countryflag.getflag([iso2])
         except:
             pass
-    # 2. country_converter 自动识别
     try:
         iso2 = coco.convert(names=[name], to="ISO2", not_found=None)
         if iso2 and iso2 not in ("not found", None, ""):
             return countryflag.getflag([iso2])
     except:
         pass
-    # 3. 兜底
     return "🌏"
 
 def get_kdj_data(ticker, interval):
@@ -414,9 +411,10 @@ def fetch_3145_data():
         return cleaned or raw_name, "📊"
 
     try:
-        url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3145.HK"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=10)
+        # 使用 MoneyDJ 新版網址
+        url = "https://www.moneydj.com/etf/ea/et013001.djhtm?etfid=3145.HK"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
 
@@ -457,7 +455,7 @@ def fetch_3145_data():
                 if result["holdings"]:
                     break
     except Exception as e:
-        print(f"[3145 MoneyDJ] {e}")
+        print(f"[3145 MoneyDJ] 抓取失敗: {e}")
 
     return result
 
