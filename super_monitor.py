@@ -84,7 +84,7 @@ CN_TO_ISO2 = {
     "法國": "FR", "法国": "FR",
 }
 
-# 3466 十大持仓中文映射 (修复了 China State Construction)
+# 3466 十大持仓中文映射
 NAME_MAP_3466 = {
     "VTECH": ("偉易達", "💻"), "SITC": ("海豐國際", "🚢"), "YUE YUEN": ("裕元集團", "👟"),
     "CIMC": ("中集集團", "🚛"), "CHINA MOBILE": ("中國移動", "📱"), "COSCO": ("中遠海控", "🚢"),
@@ -99,16 +99,6 @@ NAME_MAP_3466 = {
     "LINK REIT": ("領展房產", "🏬"), "CHINA RES": ("華潤", "🏢"), "GALAXY": ("銀河娛樂", "🎰"),
     "SJM": ("澳博控股", "🎰"), "WYNN": ("永利澳門", "🎰"), "SANDS": ("金沙中國", "🎰"),
     "MGM": ("美高梅中國", "🎰"),
-}
-
-# 3145 十大持仓中文映射
-NAME_MAP_3145 = {
-    "BBRI": ("印尼人民銀行", "🏦🇮🇩"), "6181": ("老鋪黃金", "💎"), "1138": ("中遠海能", "🚢"),
-    "BBNI": ("印尼國家銀行", "🏦🇮🇩"), "8299": ("群聯電子", "💾"), "3036": ("文曄科技", "📦"),
-    "BMRI": ("印尼曼迪利銀行", "🏦🇮🇩"), "ANTM": ("印尼安塔姆礦業", "⛏️🇮🇩"),
-    "1378": ("中國宏橋", "⛏️"), "3311": ("中國建築國際", "🏗️"), "0322": ("康師傅控股", "🍜"),
-    "SANTOS": ("Santos Ltd", "🛢️🇦🇺"), "UNI-PRESIDENT": ("統一企業中國", "🍜"),
-    "VEDANTA": ("Vedanta Ltd", "⛏️🇮🇳"), "1102": ("亞洲水泥", "🏗️"), "2688": ("新奧能源", "⚡"),
 }
 
 HK_STRONG_INDICATORS = [
@@ -402,52 +392,94 @@ def fetch_3466_holdings():
 def fetch_3145_data():
     result = {"holdings": [], "countries": []}
 
-    def get_cn_name(raw_name):
-        upper = raw_name.upper()
-        for code, (cn, icon) in NAME_MAP_3145.items():
-            if code.upper() in upper or cn in raw_name:
-                return cn, icon
-        cleaned = re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC).*$', '', raw_name, flags=re.I).strip()
-        return cleaned or raw_name, "📊"
+    # 極少數沒有中文名的股票微型補丁（手動補齊）
+    FALLBACK_CN_NAMES = {
+        "BANK RAKYAT INDONESIA": "印尼人民銀行",
+        "BANK NEGARA INDONESIA": "印尼國家銀行",
+        "BANK MANDIRI": "印尼曼迪利銀行",
+        "SANTOS": "桑托斯能源",
+        "VEDANTA": "韋丹塔資源",
+        "UNI-PRESIDENT": "統一企業中國"
+    }
+
+    def extract_chinese_name(raw_name):
+        """從 '中遠海能(1138.HK)' 提取 '中遠海能'，若無中文則查微型字典，最後返回英文原名"""
+        # 1. 先嘗試提取括號前的內容，若有中文直接返回
+        match = re.match(r'^(.+?)\(', raw_name)
+        if match:
+            name = match.group(1).strip()
+            if re.search(r'[\u4e00-\u9fa5]', name):
+                return name
+        if re.search(r'[\u4e00-\u9fa5]', raw_name):
+            return re.sub(r'\(.*?\)', '', raw_name).strip()
+        
+        # 2. 沒有中文，查微型補丁字典
+        upper_name = raw_name.upper()
+        for k, v in FALLBACK_CN_NAMES.items():
+            if k in upper_name:
+                return v
+        
+        # 3. 補丁也沒有，清理後綴並返回英文
+        return re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC|CORP|CO).*$', '', raw_name, flags=re.I).strip()
+
+    def get_icon(name, code):
+        """根據名稱或代碼返回圖標"""
+        if code:
+            if ".HK" in code:
+                if "1138" in code: return "🚢"
+                if "6181" in code: return "💎"
+                if "1378" in code: return "⛏️"
+                if "3311" in code: return "🏗️"
+                if "0322" in code: return "🍜"
+            if ".TW" in code:
+                return "💾" if "8299" in code else "📦"
+        
+        name_upper = name.upper()
+        if "BANK" in name_upper or "銀行" in name: return "🏦"
+        if "GOLD" in name_upper or "黃金" in name: return "💎"
+        if "SHIPPING" in name_upper or "海能" in name or "海控" in name: return "🚢"
+        if "CONSTRUCTION" in name_upper or "建築" in name: return "🏗️"
+        if "MICROELECTRONICS" in name_upper or "文曄" in name: return "📦"
+        if "PHISON" in name_upper or "群聯" in name: return "💾"
+        return "📊"
 
     try:
-        # 使用 MoneyDJ 新版網址
-        url = "https://www.moneydj.com/etf/ea/et013001.djhtm?etfid=3145.HK"
+        url = "http://210.66.210.14/ETF/X/Basic/Basic0007.xdjhtm?etfid=3145.HK"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
-        tables = soup.find_all("table")
 
-        for t in tables:
-            if "區域" in t.text and "比例" in t.text:
-                rows = t.find_all("tr")[1:]
-                for row in rows:
+        for table in soup.find_all("table"):
+            if "區域" in table.text and "比例" in table.text:
+                for row in table.find_all("tr")[1:]:
                     cols = row.find_all("td")
                     if len(cols) >= 3:
                         country = cols[0].text.strip()
-                        weight_text = cols[-1].text.strip()
-                        if country and re.match(r'[\d.]+', weight_text):
+                        weight_text = cols[2].text.strip() if len(cols) > 2 else cols[-1].text.strip()
+                        if country and re.match(r'^[\d.]+$', weight_text):
                             try:
-                                result["countries"].append({
-                                    "country": country,
-                                    "weight": float(weight_text)
-                                })
+                                result["countries"].append({"country": country, "weight": float(weight_text)})
                             except ValueError:
                                 pass
                 break
 
-        for t in tables:
-            if "個股" in t.text:
-                rows = t.find_all("tr")[1:]
-                for row in rows:
+        for table in soup.find_all("table"):
+            if "個股名稱" in table.text and "投資比例" in table.text:
+                for row in table.find_all("tr")[1:]:
                     cols = row.find_all("td")
                     if len(cols) >= 2:
                         raw_name = cols[0].text.strip()
                         weight_text = cols[1].text.strip()
-                        if raw_name and re.match(r'[\d.]+', weight_text):
-                            cn, icon = get_cn_name(raw_name)
+                        if raw_name and re.match(r'^[\d.]+$', weight_text):
+                            code_match = re.search(r'\((\w+\.\w+)\)', raw_name)
+                            code = code_match.group(1) if code_match else ""
+                            
+                            cn_name = extract_chinese_name(raw_name)
+                            icon = get_icon(cn_name, code)
+                            
                             result["holdings"].append({
-                                "name": cn, "icon": icon,
+                                "name": cn_name,
+                                "icon": icon,
                                 "weight": float(weight_text)
                             })
                     if len(result["holdings"]) >= 10:
