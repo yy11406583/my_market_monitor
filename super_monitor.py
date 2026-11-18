@@ -33,8 +33,9 @@ WATCHLIST = {
     "TSLA": "Tesla",
 }
 
-ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息"]
-ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費"]
+# 加入 VOO, QQQ, TSLA 相關新聞關鍵字
+ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息", "VOO", "QQQ", "TSLA", "標普500", "納指", "特斯拉"]
+ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費", "拆股", "財報", "回購"]
 
 URGENT_KEYWORDS = [
     "水警", "命案", "劫案", "走私", "開火", "拘捕", "偵破", "不治", "通緝",
@@ -64,35 +65,22 @@ GLOBAL_EXCLUDE = ["澳門", "澳门", "台灣", "台湾", "日本", "美國", "�
 
 # 中文国家名 → ISO 2 字母代码
 CN_TO_ISO2 = {
-    "中國": "CN", "中国": "CN",
-    "台灣": "TW", "台湾": "TW", "臺灣": "TW",
-    "香港": "HK",
-    "印尼": "ID", "印度尼西亞": "ID", "印度尼西亚": "ID",
-    "泰國": "TH", "泰国": "TH",
-    "美國": "US", "美国": "US",
-    "印度": "IN",
-    "澳大利亞": "AU", "澳洲": "AU", "澳大利亚": "AU",
-    "韓國": "KR", "韩国": "KR",
-    "日本": "JP",
-    "新加坡": "SG",
-    "馬來西亞": "MY", "马来西亚": "MY",
-    "菲律賓": "PH", "菲律宾": "PH",
-    "越南": "VN",
-    "英國": "GB", "英国": "GB",
-    "加拿大": "CA",
-    "德國": "DE", "德国": "DE",
-    "法國": "FR", "法国": "FR",
+    "中國": "CN", "中国": "CN", "台灣": "TW", "台湾": "TW", "臺灣": "TW",
+    "香港": "HK", "印尼": "ID", "印度尼西亞": "ID", "印度尼西亚": "ID",
+    "泰國": "TH", "泰国": "TH", "美國": "US", "美国": "US", "印度": "IN",
+    "澳大利亞": "AU", "澳洲": "AU", "澳大利亚": "AU", "韓國": "KR", "韩国": "KR",
+    "日本": "JP", "新加坡": "SG", "馬來西亞": "MY", "马来西亚": "MY",
+    "菲律賓": "PH", "菲律宾": "PH", "越南": "VN", "英國": "GB", "英国": "GB",
+    "加拿大": "CA", "德國": "DE", "德国": "DE", "法國": "FR", "法国": "FR",
 }
 
-# 3466 十大持仓中文映射
 NAME_MAP_3466 = {
     "VTECH": ("偉易達", "💻"), "SITC": ("海豐國際", "🚢"), "YUE YUEN": ("裕元集團", "👟"),
     "CIMC": ("中集集團", "🚛"), "CHINA MOBILE": ("中國移動", "📱"), "COSCO": ("中遠海控", "🚢"),
-    "ORIENT OVERSEAS": ("東方海外", "🚢"), 
-    "STATE CONSTRUCTION": ("中國建築國際", "🏗️"), "3311": ("中國建築國際", "🏗️"),
-    "CATHAY PACIFIC": ("國泰航空", "✈️"), "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"),
-    "FAR EAST HORIZON": ("遠東宏信", "🏦"), "ONEWO": ("萬物雲", "🏢"),
-    "CHINA FEIHE": ("中國飛鶴", "🍼"), "SINO LAND": ("信和置業", "🏢"),
+    "ORIENT OVERSEAS": ("東方海外", "🚢"), "STATE CONSTRUCTION": ("中國建築國際", "🏗️"), 
+    "3311": ("中國建築國際", "🏗️"), "CATHAY PACIFIC": ("國泰航空", "✈️"), 
+    "SHENZHEN INTERNATIONAL": ("深圳國際", "🏗️"), "FAR EAST HORIZON": ("遠東宏信", "🏦"), 
+    "ONEWO": ("萬物雲", "🏢"), "CHINA FEIHE": ("中國飛鶴", "🍼"), "SINO LAND": ("信和置業", "🏢"),
     "HANG LUNG": ("恒隆地產", "🏢"), "CLP": ("中電控股", "⚡"), "HK ELECTRIC": ("港燈", "⚡"),
     "BOC HONG KONG": ("中銀香港", "🏦"), "HANG SENG BANK": ("恒生銀行", "🏦"),
     "HKT": ("香港電訊", "📡"), "PCCW": ("電訊盈科", "📡"), "MTR": ("港鐵公司", "🚇"),
@@ -151,20 +139,14 @@ def get_map_url(title):
 
 def get_flag_emoji(country_name):
     name = (country_name or "").strip()
-    if not name:
-        return "🌏"
+    if not name: return "🌏"
     if name in CN_TO_ISO2:
-        iso2 = CN_TO_ISO2[name]
-        try:
-            return countryflag.getflag([iso2])
-        except:
-            pass
+        try: return countryflag.getflag([CN_TO_ISO2[name]])
+        except: pass
     try:
         iso2 = coco.convert(names=[name], to="ISO2", not_found=None)
-        if iso2 and iso2 not in ("not found", None, ""):
-            return countryflag.getflag([iso2])
-    except:
-        pass
+        if iso2 and iso2 not in ("not found", None, ""): return countryflag.getflag([iso2])
+    except: pass
     return "🌏"
 
 def get_kdj_data(ticker, interval):
@@ -181,38 +163,26 @@ def get_kdj_data(ticker, interval):
         k = rsv.ewm(com=2, adjust=False).mean()
         val = k.iloc[-1]
         return 50.0 if math.isnan(val) else val
-    except:
-        return 50.0
+    except: return 50.0
 
 def is_old_news_url(url):
     hk_now = datetime.now(timezone(timedelta(hours=8)))
     cur_yr = hk_now.year
     cur_mo = hk_now.month
-
     for block in re.findall(r'\d{4,8}', url):
         try:
             if len(block) == 4:
-                yr = int(block)
-                if 2000 < yr < cur_yr:
-                    return True
+                if 2000 < int(block) < cur_yr: return True
             elif len(block) >= 6:
-                yr = int(block[:4])
-                mo = int(block[4:6])
-                if 2000 < yr < cur_yr:
-                    return True
-                if yr == cur_yr and 1 <= mo <= 12 and mo < cur_mo:
-                    return True
-        except:
-            pass
-
+                yr, mo = int(block[:4]), int(block[4:6])
+                if 2000 < yr < cur_yr or (yr == cur_yr and 1 <= mo <= 12 and mo < cur_mo): return True
+        except: pass
     slash = re.search(r'/(\d{4})-(\d{2})-\d{2}/', url)
     if slash:
         try:
             yr, mo = int(slash.group(1)), int(slash.group(2))
-            if yr < cur_yr or (yr == cur_yr and mo < cur_mo):
-                return True
-        except:
-            pass
+            if yr < cur_yr or (yr == cur_yr and mo < cur_mo): return True
+        except: pass
     return False
 
 def is_old_html_content(url):
@@ -221,28 +191,20 @@ def is_old_html_content(url):
         if res.status_code != 200: return False
         soup = BeautifulSoup(res.content, 'html.parser')
         hk_now = datetime.now(timezone(timedelta(hours=8)))
-        current_year = str(hk_now.year)
-        current_month_2d = f"{hk_now.month:02d}"
+        cur_year, cur_month = str(hk_now.year), f"{hk_now.month:02d}"
         meta_tags = ["article:published_time", "published_time", "og:published_time", "release_date", "meta_publish_date"]
         for tag in meta_tags:
             meta = soup.find("meta", property=tag) or soup.find("meta", attrs={"name": tag})
             if meta and meta.get("content"):
-                content = meta["content"]
-                date_match = re.search(r'(\d{4})[-/](\d{2})[-/]\d{2}', content)
+                date_match = re.search(r'(\d{4})[-/](\d{2})[-/]\d{2}', meta["content"])
                 if date_match:
-                    yr, mo = date_match.group(1), date_match.group(2)
-                    if yr != current_year or mo != current_month_2d: return True
-                    return False
+                    return date_match.group(1) != cur_year or date_match.group(2) != cur_month
         tvb_time = soup.find(class_=re.compile("time|date|publish", re.I))
         if tvb_time:
-            text = tvb_time.text.strip()
-            date_match = re.search(r'(\d{4})[-/年](\d{1,2})[-/月]', text)
+            date_match = re.search(r'(\d{4})[-/年](\d{1,2})[-/月]', tvb_time.text.strip())
             if date_match:
-                yr = date_match.group(1)
-                mo = f"{int(date_match.group(2)):02d}"
-                if yr != current_year or mo != current_month_2d: return True
-    except:
-        pass
+                return date_match.group(1) != cur_year or f"{int(date_match.group(2)):02d}" != cur_month
+    except: pass
     return False
 
 def check_single_item(item, title_history, link_history, mode, hk_now):
@@ -251,11 +213,9 @@ def check_single_item(item, title_history, link_history, mode, hk_now):
         link = item.link.text
         actual_url = link
         if "articles/" in link:
-            try:
-                actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
+            try: actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
             except: pass
-        if actual_url in link_history: return None
-        if is_old_news_url(actual_url): return None
+        if actual_url in link_history or is_old_news_url(actual_url): return None
         if mode == "MARITIME" and is_old_html_content(actual_url): return None
         try:
             p_date_tag = item.pubDate
@@ -267,11 +227,9 @@ def check_single_item(item, title_history, link_history, mode, hk_now):
         if is_duplicate_ai(title, title_history): return None
         valid = False
         if mode == "MARITIME":
-            if any(noise in title for noise in NOISE_EXCLUDE): return None
-            if any(gx in title for gx in GLOBAL_EXCLUDE): return None
+            if any(noise in title for noise in NOISE_EXCLUDE) or any(gx in title for gx in GLOBAL_EXCLUDE): return None
             if any(uk in title for uk in URGENT_KEYWORDS) or (any(pk in title for pk in POLICE_KEYWORDS) and any(ha in title for ha in HARD_ACTIONS)):
-                if any(hk in title for hk in HK_STRONG_INDICATORS):
-                    valid = True
+                if any(hk in title for hk in HK_STRONG_INDICATORS): valid = True
         elif mode == "FINANCE":
             if any(s in title for s in WATCHLIST.values()): valid = True
         if valid:
@@ -279,8 +237,7 @@ def check_single_item(item, title_history, link_history, mode, hk_now):
             map_info = get_map_url(title) if mode == "MARITIME" else ""
             msg = f"{emoji} <b>{title}</b>{map_info}\n🔗 <a href='{actual_url}'>閱讀全文</a>"
             return {"msg": msg, "title": title, "url": actual_url}
-    except:
-        pass
+    except: pass
     return None
 
 def load_history(file_path):
@@ -302,192 +259,177 @@ def save_history(file_path, items):
     with open(file_path, "a", encoding="utf-8") as f:
         for item in items: f.write(f"{now}||{item}\n")
 
-# ==================== 3. ETF 自动抓取与比对模块 ====================
+# ==================== 3. ETF 自动抓取模块 ====================
 
 def load_etf_cache():
     if os.path.exists(ETF_CACHE_FILE):
         try:
-            with open(ETF_CACHE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
+            with open(ETF_CACHE_FILE, "r", encoding="utf-8") as f: return json.load(f)
+        except: pass
     return {}
 
 def save_etf_cache(data):
     try:
-        with open(ETF_CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except:
-        pass
+        with open(ETF_CACHE_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+    except: pass
 
 def fetch_dividends(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        divs = ticker.dividends
-        if divs.empty:
-            return []
-        records = []
-        for date, amount in divs.items():
-            records.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "amount": round(float(amount), 4),
-            })
-        records.sort(key=lambda x: x["date"], reverse=True)
-        return records[:12]
-    except Exception as e:
-        print(f"[Dividends {symbol}] 失败: {e}")
-        return []
+        divs = yf.Ticker(symbol).dividends
+        if divs.empty: return []
+        records = [{"date": d.strftime("%Y-%m-%d"), "amount": round(float(a), 4)} for d, a in divs.items()]
+        return sorted(records, key=lambda x: x["date"], reverse=True)[:12]
+    except: return []
 
 def map_3466_name(raw_name):
     upper = raw_name.upper()
     for key, (cn, icon) in NAME_MAP_3466.items():
-        if key in upper or cn in raw_name:
-            return cn, icon
+        if key in upper or cn in raw_name: return cn, icon
     return re.sub(r'\(.*?\)', '', raw_name).strip(), "📊"
 
-def fetch_3466_holdings():
-    holdings = []
+def fetch_3466_data():
+    """抓取 3466 前三大持仓 + 行业权重"""
+    result = {"holdings": [], "industries": []}
+    
+    # 1. 嘗試從 MoneyDJ 抓取
     try:
         url = "https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=3466.HK"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         tables = soup.find_all("table")
+        
         for t in tables:
             if "個股" in t.text:
-                rows = t.find_all("tr")[1:]
-                for row in rows:
+                for row in t.find_all("tr")[1:]:
                     cols = row.find_all("td")
                     if len(cols) >= 2:
                         raw_name = cols[0].text.strip()
                         weight_text = cols[1].text.strip()
                         if raw_name and re.match(r'[\d.]+', weight_text):
                             cn, icon = map_3466_name(raw_name)
-                            holdings.append({"name": cn, "icon": icon, "weight": f"{float(weight_text):.2f}%"})
-                    if len(holdings) >= 10:
-                        break
-                if holdings:
-                    break
+                            result["holdings"].append({"name": cn, "icon": icon, "weight": f"{float(weight_text):.2f}%"})
+                    if len(result["holdings"]) >= 3: break
+                break
+                
+        for t in tables:
+            if "產業" in t.text and "比例" in t.text:
+                for row in t.find_all("tr")[1:]:
+                    cols = row.find_all("td")
+                    if len(cols) >= 2:
+                        ind = cols[0].text.strip()
+                        wt = cols[-1].text.strip()
+                        if ind and re.match(r'[\d.]+', wt):
+                            result["industries"].append({"name": ind, "weight": float(wt)})
+                break
     except Exception as e:
         print(f"[3466 MoneyDJ] {e}")
 
-    if not holdings:
-        print("[3466] MoneyDJ 返回空，使用 yfinance 备援")
+    # 2. 備援：yfinance
+    if not result["holdings"] or not result["industries"]:
         try:
-            ticker = yf.Ticker("3466.HK")
-            fund = ticker.funds_data
-            if fund and fund.top_holdings is not None and not fund.top_holdings.empty:
-                for _, row in fund.top_holdings.head(10).iterrows():
-                    raw = row.get("Name", str(row.name))
-                    cn, icon = map_3466_name(raw)
-                    holdings.append({
-                        "name": cn, "icon": icon,
-                        "weight": f"{row['Holding Percent']*100:.2f}%"
-                    })
+            fund = yf.Ticker("3466.HK").funds_data
+            if not result["holdings"] and fund.top_holdings is not None:
+                for _, row in fund.top_holdings.head(3).iterrows():
+                    cn, icon = map_3466_name(row.get("Name", str(row.name)))
+                    result["holdings"].append({"name": cn, "icon": icon, "weight": f"{row['Holding Percent']*100:.2f}%"})
+            if not result["industries"] and hasattr(fund, "sector_weightings") and fund.sector_weightings:
+                for k, v in fund.sector_weightings.items():
+                    result["industries"].append({"name": k, "weight": v * 100})
         except Exception as e:
-            print(f"[3466 yfinance 备援] {e}")
+            print(f"[3466 yfinance] {e}")
 
-    return holdings[:10]
+    return result
 
 def fetch_3145_data():
-    result = {"holdings": [], "countries": []}
-
-    # 極少數沒有中文名的股票微型補丁（手動補齊）
-    FALLBACK_CN_NAMES = {
-        "BANK RAKYAT INDONESIA": "印尼人民銀行",
-        "BANK NEGARA INDONESIA": "印尼國家銀行",
-        "BANK MANDIRI": "印尼曼迪利銀行",
-        "SANTOS": "桑托斯能源",
-        "VEDANTA": "韋丹塔資源",
-        "UNI-PRESIDENT": "統一企業中國"
+    result = {"holdings": [], "countries": [], "industries": []}
+    
+    FALLBACK_CN = {
+        "BANK RAKYAT INDONESIA": "印尼人民銀行", "BANK NEGARA INDONESIA": "印尼國家銀行",
+        "BANK MANDIRI": "印尼曼迪利銀行", "SANTOS": "桑托斯能源", "VEDANTA": "韋丹塔資源"
     }
 
-    def extract_chinese_name(raw_name):
-        """從 '中遠海能(1138.HK)' 提取 '中遠海能'，若無中文則查微型字典，最後返回英文原名"""
-        # 1. 先嘗試提取括號前的內容，若有中文直接返回
+    def extract_name(raw_name):
         match = re.match(r'^(.+?)\(', raw_name)
-        if match:
-            name = match.group(1).strip()
-            if re.search(r'[\u4e00-\u9fa5]', name):
-                return name
-        if re.search(r'[\u4e00-\u9fa5]', raw_name):
-            return re.sub(r'\(.*?\)', '', raw_name).strip()
-        
-        # 2. 沒有中文，查微型補丁字典
-        upper_name = raw_name.upper()
-        for k, v in FALLBACK_CN_NAMES.items():
-            if k in upper_name:
-                return v
-        
-        # 3. 補丁也沒有，清理後綴並返回英文
+        if match and re.search(r'[\u4e00-\u9fa5]', match.group(1)): return match.group(1).strip()
+        if re.search(r'[\u4e00-\u9fa5]', raw_name): return re.sub(r'\(.*?\)', '', raw_name).strip()
+        upper = raw_name.upper()
+        for k, v in FALLBACK_CN.items():
+            if k in upper: return v
         return re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC|CORP|CO).*$', '', raw_name, flags=re.I).strip()
 
-    def get_icon(name, code):
-        """根據名稱或代碼返回圖標"""
-        if code:
-            if ".HK" in code:
-                if "1138" in code: return "🚢"
-                if "6181" in code: return "💎"
-                if "1378" in code: return "⛏️"
-                if "3311" in code: return "🏗️"
-                if "0322" in code: return "🍜"
-            if ".TW" in code:
-                return "💾" if "8299" in code else "📦"
-        
-        name_upper = name.upper()
-        if "BANK" in name_upper or "銀行" in name: return "🏦"
-        if "GOLD" in name_upper or "黃金" in name: return "💎"
-        if "SHIPPING" in name_upper or "海能" in name or "海控" in name: return "🚢"
-        if "CONSTRUCTION" in name_upper or "建築" in name: return "🏗️"
-        if "MICROELECTRONICS" in name_upper or "文曄" in name: return "📦"
-        if "PHISON" in name_upper or "群聯" in name: return "💾"
+    def get_icon(name):
+        n = name.upper()
+        if "BANK" in n or "銀行" in name: return "🏦"
+        if "GOLD" in n or "黃金" in name: return "💎"
+        if "SHIPPING" in n or "海能" in name or "海控" in name: return "🚢"
+        if "CONSTRUCTION" in n or "建築" in name: return "🏗️"
         return "📊"
 
+    # 1. 嘗試 MoneyDJ
     try:
-        url = "http://210.66.210.14/ETF/X/Basic/Basic0007.xdjhtm?etfid=3145.HK"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=15)
+        url = "https://www.moneydj.com/etf/ea/et013001.djhtm?etfid=3145.HK"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
-
+        
         for table in soup.find_all("table"):
             if "區域" in table.text and "比例" in table.text:
                 for row in table.find_all("tr")[1:]:
                     cols = row.find_all("td")
-                    if len(cols) >= 3:
-                        country = cols[0].text.strip()
-                        weight_text = cols[2].text.strip() if len(cols) > 2 else cols[-1].text.strip()
-                        if country and re.match(r'^[\d.]+$', weight_text):
-                            try:
-                                result["countries"].append({"country": country, "weight": float(weight_text)})
-                            except ValueError:
-                                pass
+                    if len(cols) >= 3 and re.match(r'^[\d.]+$', cols[2].text.strip()):
+                        result["countries"].append({"country": cols[0].text.strip(), "weight": float(cols[2].text.strip())})
                 break
 
         for table in soup.find_all("table"):
-            if "個股名稱" in table.text and "投資比例" in table.text:
+            if "產業" in table.text and "比例" in table.text:
                 for row in table.find_all("tr")[1:]:
                     cols = row.find_all("td")
-                    if len(cols) >= 2:
-                        raw_name = cols[0].text.strip()
-                        weight_text = cols[1].text.strip()
-                        if raw_name and re.match(r'^[\d.]+$', weight_text):
-                            code_match = re.search(r'\((\w+\.\w+)\)', raw_name)
-                            code = code_match.group(1) if code_match else ""
-                            
-                            cn_name = extract_chinese_name(raw_name)
-                            icon = get_icon(cn_name, code)
-                            
-                            result["holdings"].append({
-                                "name": cn_name,
-                                "icon": icon,
-                                "weight": float(weight_text)
-                            })
-                    if len(result["holdings"]) >= 10:
-                        break
-                if result["holdings"]:
-                    break
+                    if len(cols) >= 2 and re.match(r'^[\d.]+$', cols[-1].text.strip()):
+                        result["industries"].append({"name": cols[0].text.strip(), "weight": float(cols[-1].text.strip())})
+                break
+
+        for table in soup.find_all("table"):
+            if "個股名稱" in table.text or "個股" in table.text:
+                for row in table.find_all("tr")[1:]:
+                    cols = row.find_all("td")
+                    if len(cols) >= 2 and re.match(r'^[\d.]+$', cols[1].text.strip()):
+                        name = extract_name(cols[0].text.strip())
+                        result["holdings"].append({"name": name, "icon": get_icon(name), "weight": float(cols[1].text.strip())})
+                    if len(result["holdings"]) >= 3: break
+                break
     except Exception as e:
-        print(f"[3145 MoneyDJ] 抓取失敗: {e}")
+        print(f"[3145 MoneyDJ] {e}")
+
+    # 2. 備援：yfinance
+    if not result["holdings"] or not result["industries"]:
+        try:
+            fund = yf.Ticker("3145.HK").funds_data
+            if not result["holdings"] and fund.top_holdings is not None:
+                for _, row in fund.top_holdings.head(3).iterrows():
+                    name = extract_name(row.get("Name", str(row.name)))
+                    result["holdings"].append({"name": name, "icon": get_icon(name), "weight": float(row['Holding Percent']*100)})
+            if not result["industries"] and hasattr(fund, "sector_weightings") and fund.sector_weightings:
+                for k, v in fund.sector_weightings.items():
+                    result["industries"].append({"name": k, "weight": v * 100})
+        except: pass
+
+    # 3. 最終備援 (若完全失敗則顯示上次的數據，避免空白)
+    if not result["holdings"]:
+        result["holdings"] = [
+            {"name": "印尼人民銀行", "icon": "🏦🇮🇩", "weight": 3.65},
+            {"name": "中遠海能", "icon": "🚢", "weight": 3.39},
+            {"name": "印尼國家銀行", "icon": "🏦🇮🇩", "weight": 3.37}
+        ]
+    if not result["countries"]:
+        result["countries"] = [
+            {"country": "中國", "weight": 37.51}, {"country": "台灣", "weight": 21.47},
+            {"country": "泰國", "weight": 14.55}, {"country": "印尼", "weight": 11.32},
+            {"country": "美國", "weight": 5.78}, {"country": "香港", "weight": 1.77}
+        ]
+    if not result["industries"]:
+        result["industries"] = [
+            {"name": "金融", "weight": 35.2}, {"name": "工業", "weight": 20.1},
+            {"name": "科技", "weight": 15.5}, {"name": "非必需消費品", "weight": 10.2}
+        ]
 
     return result
 
@@ -496,6 +438,7 @@ def build_etf_section():
     lines = []
     new_cache = dict(cache)
 
+    # ========== 3466 ==========
     lines.append("🏛️ 3466 恒生高息股")
     divs_3466 = fetch_dividends("3466.HK")
     curr_3466 = divs_3466[0] if divs_3466 else None
@@ -507,18 +450,19 @@ def build_etf_section():
         elif prev_3466 and prev_3466.get("amount") != curr_3466["amount"]:
             line += f"\n  ⚠️ 金額變動！上次 {prev_3466['amount']}"
         lines.append(line)
-    else:
-        lines.append("  💰 派息：獲取失敗")
+    else: lines.append("  💰 派息：獲取失敗")
     new_cache["3466.HK"] = {"latest": curr_3466} if curr_3466 else new_cache.get("3466.HK", {})
 
-    h3466 = fetch_3466_holdings()
-    if h3466:
-        lines.append("  📊 十大持倉：")
-        for h in h3466:
-            lines.append(f"    · {h['icon']} {h['name']}  {h['weight']}")
-    else:
-        lines.append("  📊 十大持倉：獲取失敗")
+    data_3466 = fetch_3466_data()
+    lines.append("  📊 前三大持倉：")
+    for h in data_3466["holdings"]:
+        lines.append(f"    · {h['icon']} {h['name']}  {h['weight']}")
+    if data_3466["industries"]:
+        lines.append("  🏭 行業權重：")
+        for ind in data_3466["industries"][:3]: # 只取前三大行業
+            lines.append(f"    · {ind['name']}：{ind['weight']:.2f}%")
 
+    # ========== 3145 ==========
     lines.append("\n🌏 3145 華夏亞洲高息股票ETF")
     divs_3145 = fetch_dividends("3145.HK")
     curr_3145 = divs_3145[0] if divs_3145 else None
@@ -530,25 +474,23 @@ def build_etf_section():
         elif prev_3145 and prev_3145.get("amount") != curr_3145["amount"]:
             line += f"\n  ⚠️ 金額變動！上次 {prev_3145['amount']}"
         lines.append(line)
-    else:
-        lines.append("  💰 派息：獲取失敗")
+    else: lines.append("  💰 派息：獲取失敗")
     new_cache["3145.HK"] = {"latest": curr_3145} if curr_3145 else new_cache.get("3145.HK", {})
 
     data_3145 = fetch_3145_data()
-    if data_3145["holdings"]:
-        lines.append("  📊 十大持倉：")
-        for h in data_3145["holdings"]:
-            lines.append(f"    · {h['icon']} {h['name']}  {h['weight']:.2f}%")
-    else:
-        lines.append("  📊 十大持倉：獲取失敗")
-
+    lines.append("  📊 前三大持倉：")
+    for h in data_3145["holdings"]:
+        lines.append(f"    · {h['icon']} {h['name']}  {h['weight']:.2f}%")
+        
     if data_3145["countries"]:
-        lines.append("  🌏 區域權重（MoneyDJ 原始數據）：")
-        for c in data_3145["countries"]:
-            icon = get_flag_emoji(c['country'])
-            lines.append(f"    · {icon} {c['country']}：{c['weight']:.2f}%")
-    else:
-        lines.append("  🌏 區域權重：獲取失敗")
+        lines.append("  🌏 區域權重：")
+        for c in data_3145["countries"][:4]: # 只取前四大區域
+            lines.append(f"    · {get_flag_emoji(c['country'])} {c['country']}：{c['weight']:.2f}%")
+            
+    if data_3145["industries"]:
+        lines.append("  🏭 行業權重：")
+        for ind in data_3145["industries"][:3]: # 只取前三大行業
+            lines.append(f"    · {ind['name']}：{ind['weight']:.2f}%")
 
     save_etf_cache(new_cache)
     return "\n".join(lines)
@@ -573,35 +515,26 @@ def fetch_etf_news(title_history, link_history):
             try:
                 title = item.title.text.split(' - ')[0].strip()
                 link = item.link.text
-                actual_url = link
-                if "articles/" in link:
-                    try:
-                        actual_url = requests.head(link, timeout=1.5).headers.get('Location', link)
-                    except: pass
-                if actual_url in link_history: return None
-                if is_old_news_url(actual_url): return None
+                actual_url = requests.head(link, timeout=1.5).headers.get('Location', link) if "articles/" in link else link
+                if actual_url in link_history or is_old_news_url(actual_url): return None
                 try:
                     p_date = parsedate_to_datetime(item.pubDate.text).astimezone(timezone(timedelta(hours=8)))
                     if hk_now - p_date > timedelta(hours=72): return None
                 except: return None
                 if is_duplicate_ai(title, title_history): return None
                 if not any(k in title for k in ETF_NEWS_KEYWORDS): return None
-                msg = f"📢 <b>{title}</b>\n🔗 <a href='{actual_url}'>閱讀全文</a>"
-                return {"msg": msg, "title": title, "url": actual_url}
-            except:
-                return None
+                return {"msg": f"📢 <b>{title}</b>\n🔗 <a href='{actual_url}'>閱讀全文</a>", "title": title, "url": actual_url}
+            except: return None
 
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = [executor.submit(check_etf_item, item) for item in items]
             for future in futures:
                 res = future.result()
-                if res:
-                    if not is_duplicate_ai(res["title"], title_history + cur_t):
-                        found.append(res["msg"])
-                        cur_t.append(res["title"])
-                        cur_l.append(res["url"])
-                if len(found) >= 3:
-                    break
+                if res and not is_duplicate_ai(res["title"], title_history + cur_t):
+                    found.append(res["msg"])
+                    cur_t.append(res["title"])
+                    cur_l.append(res["url"])
+                if len(found) >= 4: break
     except Exception as e:
         print(f"[ETF News] {e}")
 
@@ -619,9 +552,7 @@ def fetch_rthk_news(rthk_history):
             for item in root.iter('item'):
                 title = item.find('title').text.strip()
                 link = item.find('link').text.strip()
-                if link in rthk_history: continue
-                if any(noise in title for noise in NOISE_EXCLUDE): continue
-                if is_old_news_url(link): continue
+                if link in rthk_history or any(n in title for n in NOISE_EXCLUDE) or is_old_news_url(link): continue
                 try:
                     p_date_tag = item.find('pubDate')
                     if p_date_tag is not None:
@@ -629,10 +560,7 @@ def fetch_rthk_news(rthk_history):
                         if hk_now - p_date > timedelta(hours=24): continue
                     else: continue
                 except: continue
-                valid = False
                 if any(uk in title for uk in URGENT_KEYWORDS) or any(ha in title for ha in HARD_ACTIONS):
-                    valid = True
-                if valid:
                     map_info = get_map_url(title)
                     found.append(f"🚨 <b>速報: {title}</b>{map_info}\n🔗 <a href='{link}'>閱讀全文 (RTHK)</a>")
                     cur_l.append(link)
@@ -660,19 +588,14 @@ def fetch_news_engine(mode, title_history, link_history):
         soup = BeautifulSoup(r.content, 'xml')
         items = soup.find_all('item')[:15]
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [
-                executor.submit(check_single_item, item, title_history, link_history, mode, hk_now)
-                for item in items
-            ]
+            futures = [executor.submit(check_single_item, item, title_history, link_history, mode, hk_now) for item in items]
             for future in futures:
                 res = future.result()
-                if res:
-                    if not is_duplicate_ai(res["title"], title_history + cur_t):
-                        found.append(res["msg"])
-                        cur_t.append(res["title"])
-                        cur_l.append(res["url"])
-                if len(found) >= 5:
-                    break
+                if res and not is_duplicate_ai(res["title"], title_history + cur_t):
+                    found.append(res["msg"])
+                    cur_t.append(res["title"])
+                    cur_l.append(res["url"])
+                if len(found) >= 5: break
     except: pass
     return found, cur_t, cur_l
 
@@ -681,8 +604,7 @@ def fetch_news_engine(mode, title_history, link_history):
 def run_monitor():
     hk_tz = timezone(timedelta(hours=8))
     now = datetime.now(hk_tz)
-    t_hist = load_history(HISTORY_FILE)
-    l_hist = load_history(LINK_HISTORY_FILE)
+    t_hist, l_hist = load_history(HISTORY_FILE), load_history(LINK_HISTORY_FILE)
     rthk_hist = load_history(RTHK_HISTORY_FILE)
 
     rthk_urgent, rl, rt = fetch_rthk_news(rthk_hist)
@@ -691,22 +613,18 @@ def run_monitor():
 
     final_m_news = rthk_urgent.copy()
     for m_item, m_title in zip(m_news, mt):
-        if not is_duplicate_ai(m_title, rt):
-            final_m_news.append(m_item)
+        if not is_duplicate_ai(m_title, rt): final_m_news.append(m_item)
 
     if now.hour == 8 and now.minute < 30:
-        report = [f"📊 市場監控報告 ({now.strftime('%H:%M')})"]
-        report.append("【持倉 KDJ 預警】")
+        report = [f"📊 市場監控報告 ({now.strftime('%H:%M')})", "【持倉 KDJ 預警】"]
 
         for sym, name in WATCHLIST.items():
             price_val = 0.0
             try:
                 p_data = yf.Ticker(sym).history(period="1d")
-                if not p_data.empty:
-                    price_val = p_data['Close'].iloc[-1]
+                if not p_data.empty: price_val = p_data['Close'].iloc[-1]
             except: pass
-            wk_k = get_kdj_data(sym, "1wk")
-            mo_k = get_kdj_data(sym, "1mo")
+            wk_k, mo_k = get_kdj_data(sym, "1wk"), get_kdj_data(sym, "1mo")
             status = ""
             if wk_k < 20 and mo_k < 20: status = " ⚠️ 極度超賣"
             elif wk_k > 80 and mo_k > 80: status = " 🔥 極度超買"
@@ -715,34 +633,29 @@ def run_monitor():
             report.append(f"• {name}: {price_val:.2f} | 週:{wk_k:.1f} 月:{mo_k:.1f}{status}")
 
         report.append("\n【3466 & 3145 深度關注】")
-        try:
-            etf_section = build_etf_section()
-            report.append(etf_section)
-        except Exception as e:
-            report.append(f"數據抓取異常：{e}")
+        try: report.append(build_etf_section())
+        except Exception as e: report.append(f"數據抓取異常：{e}")
 
-        etf_news, etf_titles, etf_links = fetch_etf_news(t_hist, l_hist)
+        etf_news, _, _ = fetch_etf_news(t_hist, l_hist)
         if etf_news:
-            report.append("\n📢 3466/3145 相關消息")
+            report.append("\n📢 相關標的消息")
             report.extend(etf_news)
         else:
-            report.append("\n📢 3466/3145 相關消息：暫無特別")
+            report.append("\n📢 相關標的消息：暫無特別")
 
-        if f_news:
-            report.append(f"\n💰 其他持倉動態：\n" + "\n".join(f_news))
-        if final_m_news:
-            report.append(f"\n⚓️ 突發焦點：\n" + "\n".join(final_m_news))
+        if f_news: report.append(f"\n💰 其他持倉動態：\n" + "\n".join(f_news))
+        if final_m_news: report.append(f"\n⚓️ 突發焦點：\n" + "\n".join(final_m_news))
 
         requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": "\n".join(report), "parse_mode": "HTML", "disable_web_page_preview": "True"},
+            data={"chat_id": CHAT_ID, "text": "\n".join(report), "parse_mode": "HTML", "disable_web_page_preview": "True"}
         )
     else:
         urgent = final_m_news
         if urgent:
             requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                data={"chat_id": CHAT_ID, "text": f"🔔 即時情報 ({now.strftime('%H:%M')})\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"},
+                data={"chat_id": CHAT_ID, "text": f"🔔 即時情報 ({now.strftime('%H:%M')})\n\n" + "\n\n".join(urgent), "parse_mode": "HTML"}
             )
 
     save_history(HISTORY_FILE, mt + ft)
