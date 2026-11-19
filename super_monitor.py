@@ -33,7 +33,6 @@ WATCHLIST = {
     "TSLA": "Tesla",
 }
 
-# 加入 VOO, QQQ, TSLA 相關新聞關鍵字
 ETF_NEWS_KEYWORDS = ["3466", "3145", "恒生高息股", "華夏亞洲高息", "恒生高股息", "VOO", "QQQ", "TSLA", "標普500", "納指", "特斯拉"]
 ETF_SPECIAL_KEYWORDS = ["成份股", "管理費", "派息", "股息", "分派", "指數調整", "經理費", "託管費", "拆股", "財報", "回購"]
 
@@ -72,6 +71,14 @@ CN_TO_ISO2 = {
     "日本": "JP", "新加坡": "SG", "馬來西亞": "MY", "马来西亚": "MY",
     "菲律賓": "PH", "菲律宾": "PH", "越南": "VN", "英國": "GB", "英国": "GB",
     "加拿大": "CA", "德國": "DE", "德国": "DE", "法國": "FR", "法国": "FR",
+}
+
+# yfinance 行業英文轉中文
+SECTOR_CN = {
+    "realestate": "房地產", "consumer_cyclical": "非必需消費", "basic_materials": "基礎材料",
+    "financial_services": "金融服務", "technology": "科技", "industrials": "工業",
+    "energy": "能源", "healthcare": "醫療保健", "communication_services": "通訊服務",
+    "consumer_defensive": "必需消費", "utilities": "公用事業", "cash": "現金", "other": "其他"
 }
 
 NAME_MAP_3466 = {
@@ -288,7 +295,7 @@ def map_3466_name(raw_name):
     return re.sub(r'\(.*?\)', '', raw_name).strip(), "📊"
 
 def fetch_3466_data():
-    """抓取 3466 前三大持仓 + 行业权重"""
+    """抓取 3466 前三大持仓 + 行业权重(排序+中文)"""
     result = {"holdings": [], "industries": []}
     
     # 1. 嘗試從 MoneyDJ 抓取
@@ -324,28 +331,30 @@ def fetch_3466_data():
     except Exception as e:
         print(f"[3466 MoneyDJ] {e}")
 
-    # 2. 備援：yfinance
-    if not result["holdings"] or not result["industries"]:
+    # 2. 備援：yfinance (如果 MoneyDJ 沒抓到行業，或抓到的是空)
+    if not result["industries"]:
         try:
             fund = yf.Ticker("3466.HK").funds_data
-            if not result["holdings"] and fund.top_holdings is not None:
-                for _, row in fund.top_holdings.head(3).iterrows():
-                    cn, icon = map_3466_name(row.get("Name", str(row.name)))
-                    result["holdings"].append({"name": cn, "icon": icon, "weight": f"{row['Holding Percent']*100:.2f}%"})
-            if not result["industries"] and hasattr(fund, "sector_weightings") and fund.sector_weightings:
+            if hasattr(fund, "sector_weightings") and fund.sector_weightings:
                 for k, v in fund.sector_weightings.items():
-                    result["industries"].append({"name": k, "weight": v * 100})
+                    if v > 0: # 過濾 0%
+                        cn_name = SECTOR_CN.get(k.lower(), k)
+                        result["industries"].append({"name": cn_name, "weight": v * 100})
         except Exception as e:
             print(f"[3466 yfinance] {e}")
 
+    # 排序並取前五大
+    result["industries"] = sorted(result["industries"], key=lambda x: x["weight"], reverse=True)[:5]
     return result
 
 def fetch_3145_data():
     result = {"holdings": [], "countries": [], "industries": []}
     
+    # 補齊微型字典
     FALLBACK_CN = {
         "BANK RAKYAT INDONESIA": "印尼人民銀行", "BANK NEGARA INDONESIA": "印尼國家銀行",
-        "BANK MANDIRI": "印尼曼迪利銀行", "SANTOS": "桑托斯能源", "VEDANTA": "韋丹塔資源"
+        "BANK MANDIRI": "印尼曼迪利銀行", "SANTOS": "桑托斯能源", "VEDANTA": "韋丹塔資源",
+        "COSCO SHIPPING": "中遠海能"
     }
 
     def extract_name(raw_name):
@@ -355,7 +364,7 @@ def fetch_3145_data():
         upper = raw_name.upper()
         for k, v in FALLBACK_CN.items():
             if k in upper: return v
-        return re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC|CORP|CO).*$', '', raw_name, flags=re.I).strip()
+        return re.sub(r'\s+(PERSER|TBK|PT|LTD|NPV|HOLDINGS|INC|CORP|CO|ENERGY|TRANSPORTATION).*$', '', raw_name, flags=re.I).strip()
 
     def get_icon(name):
         n = name.upper()
@@ -384,7 +393,9 @@ def fetch_3145_data():
                 for row in table.find_all("tr")[1:]:
                     cols = row.find_all("td")
                     if len(cols) >= 2 and re.match(r'^[\d.]+$', cols[-1].text.strip()):
-                        result["industries"].append({"name": cols[0].text.strip(), "weight": float(cols[-1].text.strip())})
+                        ind_name = cols[0].text.strip()
+                        if ind_name: # 防止空字串
+                            result["industries"].append({"name": ind_name, "weight": float(cols[-1].text.strip())})
                 break
 
         for table in soup.find_all("table"):
@@ -399,18 +410,19 @@ def fetch_3145_data():
     except Exception as e:
         print(f"[3145 MoneyDJ] {e}")
 
-    # 2. 備援：yfinance
-    if not result["holdings"] or not result["industries"]:
+    # 2. 備援：yfinance (用於行業)
+    if not result["industries"]:
         try:
             fund = yf.Ticker("3145.HK").funds_data
-            if not result["holdings"] and fund.top_holdings is not None:
-                for _, row in fund.top_holdings.head(3).iterrows():
-                    name = extract_name(row.get("Name", str(row.name)))
-                    result["holdings"].append({"name": name, "icon": get_icon(name), "weight": float(row['Holding Percent']*100)})
-            if not result["industries"] and hasattr(fund, "sector_weightings") and fund.sector_weightings:
+            if hasattr(fund, "sector_weightings") and fund.sector_weightings:
                 for k, v in fund.sector_weightings.items():
-                    result["industries"].append({"name": k, "weight": v * 100})
+                    if v > 0:
+                        cn_name = SECTOR_CN.get(k.lower(), k)
+                        result["industries"].append({"name": cn_name, "weight": v * 100})
         except: pass
+
+    # 排序並取前五大
+    result["industries"] = sorted(result["industries"], key=lambda x: x["weight"], reverse=True)[:5]
 
     # 3. 最終備援 (若完全失敗則顯示上次的數據，避免空白)
     if not result["holdings"]:
@@ -428,7 +440,7 @@ def fetch_3145_data():
     if not result["industries"]:
         result["industries"] = [
             {"name": "金融", "weight": 35.2}, {"name": "工業", "weight": 20.1},
-            {"name": "科技", "weight": 15.5}, {"name": "非必需消費品", "weight": 10.2}
+            {"name": "科技", "weight": 15.5}, {"name": "非必需消費", "weight": 10.2}, {"name": "能源", "weight": 5.0}
         ]
 
     return result
@@ -459,7 +471,7 @@ def build_etf_section():
         lines.append(f"    · {h['icon']} {h['name']}  {h['weight']}")
     if data_3466["industries"]:
         lines.append("  🏭 行業權重：")
-        for ind in data_3466["industries"][:3]: # 只取前三大行業
+        for ind in data_3466["industries"]: # 已截取前五大
             lines.append(f"    · {ind['name']}：{ind['weight']:.2f}%")
 
     # ========== 3145 ==========
@@ -484,12 +496,12 @@ def build_etf_section():
         
     if data_3145["countries"]:
         lines.append("  🌏 區域權重：")
-        for c in data_3145["countries"][:4]: # 只取前四大區域
+        for c in data_3145["countries"][:4]: # 區域維持前四
             lines.append(f"    · {get_flag_emoji(c['country'])} {c['country']}：{c['weight']:.2f}%")
             
     if data_3145["industries"]:
         lines.append("  🏭 行業權重：")
-        for ind in data_3145["industries"][:3]: # 只取前三大行業
+        for ind in data_3145["industries"]: # 已截取前五大
             lines.append(f"    · {ind['name']}：{ind['weight']:.2f}%")
 
     save_etf_cache(new_cache)
